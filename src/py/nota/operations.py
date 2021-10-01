@@ -17,8 +17,8 @@ class Operations:
     def hasNote(self, path: str) -> bool:
         pass
 
-    def saveNote(self, note: Note) -> bool:
-        pass
+    def readNote(self, note: Note) -> str:
+        return self.store.readNote(note)
 
     def listNotes(self, path: Optional[str] = None) -> Iterable[NotePath]:
         yield from self.store.listNotes()

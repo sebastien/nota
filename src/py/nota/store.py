@@ -79,6 +79,9 @@ class Store(AbstractStore):
     def hasNote(self, note: str) -> bool:
         return self.notePath(note).exists()
 
+    def readNote(self, note: str) -> str:
+        return self.notePath(note).read_text()
+
     def listNotes(self) -> Iterable[str]:
         n = 0 - len(self.EXTENSION)
         return (str(_.relative_to(self.base))[:n] for _ in self.files.walk(lambda _: _.suffix == self.EXTENSION))

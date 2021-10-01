@@ -7,6 +7,7 @@ from typing import Optional, Iterable
 from ..utils.cli import runcli, cli
 from ..operations import Operations
 from ..store import Store
+from ..utils import indexing
 
 ENCODING = sys.stdout.encoding
 
@@ -70,6 +71,19 @@ def edit(context, name: str):
 def _list(context, query: Optional[str] = None):
     """XXXX"""
     context.displayEnumeratedList(context.do.listNotes())
+
+
+@cli("QUERY", alias="q|s")
+def find(context, query: str):
+    """XXXX"""
+    idx: dict[str, list[indexing.Entry]] = {}
+    for note in context.do.listNotes():
+        text = context.do.readNote(note)
+        print(text)
+        idx = indexing.index(text, note, idx)
+    for score, entry in indexing.find(idx, query):
+        context.out(
+            f"[{round(score*100):3d}%] {entry.source}: {entry.original}")
 
 
 def run(args=sys.argv[1:]):
