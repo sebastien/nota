@@ -1,7 +1,7 @@
 import argparse
 import re
 import sys
-from typing import Callable, Optional
+from typing import Callable, Optional, NamedTuple
 
 # --
 # # CLI EDSL
@@ -18,8 +18,7 @@ RE_ARG = re.compile(r"\s*(?P<arg>[a-z0-9]+|[A-Z]+):(?P<text>.*)$")
 # Commands are aggregated into the `COMMANDS` dictionary, which can
 # then be fed to `argparse`.
 TArgument = tuple[list[str], dict[str, str]]
-COMMANDS: dict[str, tuple[Callable, str,
-                          dict[str, TArgument], list[Callable]]] = {}
+COMMANDS: dict[str, 'Command'] = {}
 
 
 def option(*args, **kwargs):
@@ -34,12 +33,20 @@ def option(*args, **kwargs):
 # an `argparse` subparser.
 
 
-def cli(*args: str, options: Optional[list[Callable]] = None):
+class Command(NamedTuple):
+    functor: Callable
+    doc: Optional[str]
+    args: dict[str, TArgument]
+    options: list[Callable]
+    aliases: list[str]
+
+
+def cli(*args: str, options: Optional[list[Callable]] = None, alias: Optional[str] = None):
     """Decorator used to register a function as a CLI command. Argumnets
     are like `("-o","-f|--format", "FILE+")` and the decorated function
     should have a documentation that contains lines like
     `o: Output file` or `format: Output format` or `FILE: Input file(s)`."""
-    cli_args: Ordereddict[str, TArgument] = Ordereddict()
+    cli_args: dict[str, TArgument] = {}
     # We iterate on the arguments
     for i, p in enumerate(args):
         # The following extracts the `argparse.add_argument` information and
@@ -73,7 +80,7 @@ def cli(*args: str, options: Optional[list[Callable]] = None):
                 cli_args[arg] = (p_args, p_kwargs)
 
     # That's the decorator's wrapper
-    def wrapper(f: Callable):
+    def wrapper(f: Callable, alias=alias):
         # We now extract the arguments help from the command line
         # help, and update the `cli_args` accordingly.
         doc: list[str] = []
@@ -95,24 +102,27 @@ def cli(*args: str, options: Optional[list[Callable]] = None):
 
         # We register the commands now
         c_doc = RE_SPACES.sub(" ", " ".join(doc).strip())
-        COMMANDS[f.__name__.lstrip("_")] = (f, c_doc, cli_args, options or [])
+        cmd = Command(f, c_doc, cli_args, options or [], [_.strip()
+                                                          for _ in (alias or "").split("|") if _.strip()])
+        COMMANDS[f.__name__.lstrip("_")] = cmd
         return f
     return wrapper
 
 
-def runcli(args: list[str] = sys.argv[1:], description=None) -> int:
+def runcli(args: list[str] = sys.argv[1:], name=None, description=None, context=None) -> int:
     """Runs the given command, as passed on the command line"""
     # FROM: https://stackoverflow.com/questions/10448200/how-to-parse-multiple-nested-sub-commands-using-python-argparse
     if not args:
         args = ["--help"]
     parser = argparse.ArgumentParser(
-        prog="shared-secrets", description=description)
+        prog=name, description=description)
     subparsers = parser.add_subparsers(
         help="Available subcommands", dest='subcommand')
     # We register the subcommands
     for name, cmd in COMMANDS.items():
         # We create a subparser
-        func, doc, argsdef, options = cmd
+        # TODO: Support aliases
+        func, doc, argsdef, options, aliases = cmd
         subparser = subparsers.add_parser(name, help=doc)
         for o in options:
             o(subparser.add_argument)
@@ -123,7 +133,6 @@ def runcli(args: list[str] = sys.argv[1:], description=None) -> int:
     # We parse the arguments
     parsed = None
     rest = args
-    context = None
     while rest:
         p, rest = parser.parse_known_args(rest)
         if p.subcommand:
@@ -135,10 +144,11 @@ def runcli(args: list[str] = sys.argv[1:], description=None) -> int:
         raise ValueError("Cannot parse the command", parsed, rest)
     # Or we've parsed something and we have the matching subcommand
     elif parsed and parsed.subcommand:
-        fun, fun_doc, fun_args, options = COMMANDS[parsed.subcommand]
+        fun, fun_doc, fun_args, options, aliases = COMMANDS[parsed.subcommand]
         # FIXME: The conversation to lower here is likely to break at some point
-        result = fun(parsed, context, *(getattr(parsed, k.lower())
-                                        for k in fun_args))
+        # TODO: Should pass parsed there
+        result = fun(context, *(getattr(parsed, k.lower())
+                                for k in fun_args))
         return result
     else:
         # FIXME: Not sure what is going in there

@@ -1,8 +1,12 @@
 import sys
 import os
+import re
+import subprocess
 from pathlib import Path
-from typing import Optional
-from .utils.cli import runcli, cli
+from typing import Optional, Iterable
+from ..utils.cli import runcli, cli
+from ..operations import Operations
+from ..store import Store
 
 ENCODING = sys.stdout.encoding
 
@@ -13,13 +17,63 @@ ENCODING = sys.stdout.encoding
 # with its documentation and command line arguments.
 
 
-@cli("-k|--key?", "NAME?", "GROUP*")
-def add(args, context: Context, key: Optional[str], name: Optional[str], group: list[str]):
+class Context:
+
+    def __init__(self):
+        self.do = Operations(Store())
+        self.editor = os.environ["EDITOR"] if "EDITOR" in os.environ else "vi"
+
+    def edit(self, path: str):
+        with self.do.editNote(path) as p:
+            subprocess.run([self.editor, str(p)])
+
+    def err(self, message: str):
+        sys.stdout.write("[!] ")
+        sys.stdout.write(message)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    def out(self, message: str):
+        sys.stdout.write(message)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    def getNote(self, nameish: str) -> str:
+        if RE_INT.match(nameish):
+            notes = list(self.do.listNotes())
+            indice = max(1, int(nameish)) - 1
+            if indice >= 0 and indice < len(notes):
+                return notes[indice]
+            else:
+                raise IndexError
+        else:
+            return nameish
+
+    def displayEnumeratedList(self, items: Iterable[str]):
+        if not items:
+            self.err(f"No item found")
+        else:
+            for i, item in enumerate(items):
+                self.out(f"[{i+1:2d}] {item}")
+
+
+RE_INT = re.compile("^\d+$")
+
+
+@cli("NAME", alias="e|ed")
+def edit(context, name: str):
     """XXXX"""
+    context.edit(context.getNote(name))
+
+
+@cli("QUERY?", alias="l|ls")
+def _list(context, query: Optional[str] = None):
+    """XXXX"""
+    context.displayEnumeratedList(context.do.listNotes())
 
 
 def run(args=sys.argv[1:]):
-    return runcli(args)
+    return runcli(args, name="nota", context=Context())
 
 
 if __name__ == "__main__":
