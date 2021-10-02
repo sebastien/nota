@@ -1,104 +1,62 @@
-from typing import Optional, Iterable, Callable, Any, cast
-import time
+from typing import Optional, Optional, Any, List, Dict, Union, Iterable
 import json
 
-# # Tree Library
-#
-# Defines the fundamental building blocks for working with tree-like data.
 
-__doc__ = """
-Defines different types of nodes that can be used to work with tree-like
-structures. Each tree structure supports a few useful features:
-
-- event dispatching
-- depth-first walking
-- update and children updat timestamps (activated with `touch`).
-"""
-
-
-class Event:
-    """Wraps some data and binds it to a name. An event is propagated up
-    a tree until its `isPropagating` attribute is set to `False`."""
-
-    def __init__(self, name: str, data: Optional[Any] = None):
-        self.name = name
-        self.data = data
-        self.created = time.time()
-        self.target: Optional['Node'] = None
-        self.isPropagating: bool = True
-
-    def stop(self):
-        self.isPropagating = False
-        return self
-
-    def __str__(self):
-        return f"<Event {self.name}={self.data}>"
-
-
+# NOTE: This is copied from parsource, originally from tlang.
 class Node:
-    """A basic implementation of a tree."""
+    """A node is an uniquely identified, named object with zero or one parent,
+    a set of attributes and a list of children."""
 
-    ID = 0
-    SEPARATOR = "."
+    IDS = 0
 
-    def __init__(self, name: Optional[str] = None, data: Any = None):
-        self.id: int = Node.ID
-        Node.ID += 1
-        self._name: Optional[str] = name
-        self._children: list['Node'] = []
+    def __init__(self, name: str, **attributes):
+        assert isinstance(
+            name, str), f"Node name must be a string, got: {name}"
+        self.name = name
+        self.id = Node.IDS
+        Node.IDS += 1
         self.parent: Optional['Node'] = None
-        self.data = data
-        self.attributes: dict[str, Any] = {}
-        self.meta: dict[str, Any] = {}
-        self.handlers: Optional[dict[str, Callable]] = None
-        self.changed = time.time()
-        self.childChanged = self.changed
+        # FIXME: This does not support namespaces for attributes
+        self.attributes: Dict[str, Any] = attributes
+        self._children: List['Node'] = []
+        self.metadata: Optional[Dict[str, Any]] = None
 
     @property
-    def name(self):
-        return self._name or str(self.id)
+    def head(self) -> Optional['Node']:
+        return self._children[0] if self._children else None
+
+    @property
+    def tail(self) -> List['Node']:
+        return self._children[1:]
+
+    @property
+    def children(self) -> List['Node']:
+        return self._children
+
+    @property
+    def count(self) -> int:
+        return len(self._children)
 
     @property
     def root(self) -> Optional['Node']:
         root = None
-        while node := self.parent:
-            root = node
+        parent = self.parent
+        while parent:
+            root = parent
+            parent = parent.parent
         return root
 
     @property
-    def parentIndex(self) -> int:
-        return self.parent.children.index(self) if self.parent else 0
+    def isTree(self) -> bool:
+        return not self.parent
 
     @property
-    def cacheKey(self):
-        """The key is used for caching."""
-        return self.path
+    def isEmpty(self) -> bool:
+        return self.isLeaf and not self.hasAttributes
 
     @property
-    def path(self):
-        if self.parent:
-            if self.parent.isRoot:
-                return self.name
-            else:
-                return f"{self.parent.path}{self.SEPARATOR}{self.name}"
-        else:
-            return "#root"
-
-    @property
-    def depth(self) -> int:
-        node = self
-        depth = 0
-        while node.parent:
-            node = node.parent
-            depth += 1
-        return depth
-
-    @property
-    def root(self) -> 'Node':
-        node = self
-        while node.parent:
-            node = node.parent
-        return node
+    def isSubtree(self) -> bool:
+        return bool(self.parent)
 
     @property
     def ancestors(self) -> Iterable['Node']:
@@ -114,22 +72,20 @@ class Node:
             yield from child.descendants
 
     @property
-    def nextSibling(self) -> Optional['Node']:
-        if not self.parent:
-            return None
-        children = self.parent.children
-        i = children.index(self)
-        assert i >= 0
-        return children[i+1] if i + 1 < len(children) else None
-
-    @property
     def previousSibling(self) -> Optional['Node']:
         if not self.parent:
             return None
-        children = self.parent.children
-        i = children.index(self)
-        assert i >= 0
-        return children[i-1] if i > 0 else None
+        siblings = self.parent.children
+        i = siblings.index(self)
+        return siblings[i - 1] if i > 0 else None
+
+    @property
+    def nextSibling(self) -> Optional['Node']:
+        if not self.parent:
+            return None
+        siblings = self.parent.children
+        i = siblings.index(self)
+        return siblings[i + 1] if i + 1 < len(siblings) else None
 
     @property
     def previousSiblings(self) -> Iterable['Node']:
@@ -158,20 +114,12 @@ class Node:
         return self._children[-1] if self._children else None
 
     @property
-    def leaves(self) -> Iterable['Node']:
-        if not self.children:
-            yield self
-        else:
-            for child in self.children:
-                yield from child.leaves
-
-    @property
-    def isRoot(self) -> bool:
-        return not self.parent
-
-    @property
     def isLeaf(self) -> bool:
-        return not self.children
+        return len(self._children) == 0
+
+    @property
+    def isNode(self) -> bool:
+        return len(self._children) > 0
 
     @property
     def hasAttributes(self) -> bool:
@@ -192,113 +140,27 @@ class Node:
         self.attributes.update(attributes)
         return self
 
-    # NOTE: We use an accesor as filesystem nodes do not store children
-    # in memory.
-    @property
-    def children(self):
-        return self._children
-
-    @children.setter
-    def children(self, children: list['Node']):
-        self.clear()
-        for child in children:
-            self.add(child)
-
-    def setMeta(self, meta):
-        self.meta = meta
-        return self
-
-    def setData(self, data):
-        self.data = data
-        return self
-
-    def on(self, event: str, callback: Callable):
-        """Binds an event handler (`callback`) to the given even path. A
-        handler can only be bound once."""
-        self.handlers = self.handlers or {}
-        handlers = self.handlers.setdefault(event, [])
-        assert callback not in handlers, f"Registering callback twice in node {self}: {callback}"
-        handlers.append(callback)
-        return self
-
-    def off(self, event: str, callback: Callable):
-        """Unbinds an event handler (`callback`) from the given even path,
-        which requires the event handler to have previously been bound."""
-        handlers = self.handlers.get(event) if self.handlers else None
-        if handlers:
-            assert callback not in handlers, f"Callback not registered in node {self}: {callback}"
-            handlers.remove(callback)
-        return self
-
-    def trigger(self, event: str, data=None) -> Event:
-        """Creates a new event with the given name and data, dispatching it
-        up."""
-        event = Event(event, data)
-        return self._dispatchEvent(event)
-
-    def _dispatchEvent(self, event: Event):
-        """Dispatches the event in this node, triggering any registered callback
-        and propagating the even to the parent."""
-        handlers = self.handlers.get(event.name, ()) if self.handlers else ()
-        event.target = self
-        for h in handlers:
-            if h(event) is False:
-                event.stop()
-                break
-        if event.isPropagating and self.parent:
-            self.parent._dispatchEvent(event)
-        return event
-
-    def append(self, node: 'Node') -> 'Node':
-        return self.add(node)
-
-    def add(self, node: 'Node') -> 'Node':
-        if node not in self.children:
-            node.parent = self
-            self.children.append(node)
+    def copy(self, depth=-1):
+        """Does a deep copy of this node. If a depth is given, it will
+        stop at the given depth."""
+        node = Node(self.name)
+        self.attributes = type(self.attributes)((k, v)
+                                                for k, v in self.attributes.items())
+        if depth != 0:
+            for child in self._children:
+                node.append(child.copy(depth - 1))
         return node
-
-    def set(self, index, node: 'Node') -> 'Node':
-        assert isinstance(node, Node), f"Expected a Node, got: {node}"
-        assert not node.parent, "Cannot set node to {0}, it already has a parent: {1}".format(
-            self, node)
-        n = len(self._children)
-        if n == 0:
-            return self.add(node)
-        else:
-            # NOTE: We don't want to use detach here
-            i = min(max(0, n + index if index < 0 else index), n - 1)
-            previous = self._children[i]
-            self._children[i] = node
-            previous.parent = None
-            node.parent = self
-            return node
-
-    def setChildren(self, children: Iterable['Node']):
-        if self.children:
-            for child in self.children:
-                child.parent = None
-            self._children = []
-        for child in children:
-            self.append(child)
-        return self
-
-    def remove(self, node: 'Node'):
-        assert node.parent == self
-        self._children.remove(node)
-        node.parent = None
-        return node
-
-    def detach(self) -> 'Node':
-        if self.parent:
-            self.parent.remove(self)
-        return self
 
     def index(self, node=None) -> Optional[int]:
         if not node:
             return self.parent.index(self) if self.parent else None
         else:
             return self._children.index(node)
+
+    def detach(self) -> 'Node':
+        if self.parent:
+            self.parent.remove(self)
+        return self
 
     def wrap(self, node: "Node") -> 'Node':
         """Moves the current node into the given `node`, attaching the given
@@ -327,158 +189,165 @@ class Node:
             self.add(c.detach())
         return self
 
-    def touch(self):
-        """Marks this node as changed, capturing the timestamp and
-        propagating the change up."""
-        changed = time.time()
-        self.changed = changed
-        for _ in self.ancestors:
-            _.childChanged = max(changed, _.childChanged)
-        return self
-
-    def walk(self) -> Iterable['Node']:
-        yield self
-        for c in self.children:
-            yield from c.walk()
-
-    def copy(self, depth=-1):
-        """Does a deep copy of this node. If a depth is given, it will
-        stop at the given depth."""
-        node = self.__class__(self.name)
-        self.attributes = {k: v for k, v in self.attributes.items()}
-        if depth != 0:
-            for child in self._children:
-                node.append(child.copy(depth - 1))
-        return node
-
-    def toPrimitive(self):
-        return {
-            "id": self.id,
-            "meta": self.meta,
-            "children": [_.toPrimitive() for _ in self.children],
-        }
-
-    def __repr__(self):
-        name = f"name={self.name} id={self.id}" if self._name else f"id={self.id}"
-        return f"<{self.__class__.__name__} {name} {f'…{len(self.children)}>' if self.children else '/>'}"
-
-    def toASCII(self) -> str:
-        return toASCII(self)
-
-
-class NamedNode(Node):
-    """Named nodes make trees where children are named instead
-    of being anonymous and indexed. This structure makes it easy to
-    implement registries and filesystem-like hierarchies."""
-
-    def __init__(self, name: Optional[str] = None, parent: Optional['NamedNode'] = None):
-        super().__init__(name)
-        self._children: dict[str, 'NamedNode'] = dict()
-        self.parent: Optional['NamedNode'] = None
-        # We bind the node if a parent was set
-        if parent:
-            assert name, "Cannot set a parent without setting a name."
-            parent.set(name, self)
-
-    @property
-    def children(self):
-        return list(self._children.values())
-
-    @children.setter
-    def children(self, children):
-        self.clear()
-        for child in children:
-            assert child.name, "When setting a name, children must already be named"
-            self.set(child.name, child)
-
-    def rename(self, name: str):
-        if self.parent:
-            self.parent.set(name, self)
-        else:
-            self._name = name
-        return self
-
-    def removeAt(self, name: str):
-        raise NotImplementedError
-
-    def clear(self):
-        return [child.detach() for child in self.children]
-
-    def remove(self, node: 'NamedNode'):
-        assert node.parent == self
-        assert self._children[node.name] == node
-        del self._children[node.name]
-        node.parent = None
-        return node
-
-    def detach(self):
-        return self.parent.remove(self) if self.parent else self
-
-    def add(self, node: 'Node') -> 'NamedNode':
-        assert isinstance(
-            node, NamedNode), "NamedNode can only take a compatible subclass"
-        assert node.name, "Node can only be added if named"
-        return self.set(node.name, node)
-
-    def set(self, key: str, node: 'NamedNode') -> 'NamedNode':
-        assert key, f"Cannot set node with key '{key}' in: {self.path}"
-        # We remove the previous child, if any
-        previous = self._children.get(key)
-        if previous:
-            previous.detach()
-        # We bind the node first
-        node._name = key
+    def add(self, node: 'Node') -> 'Node':
+        assert isinstance(node, Node), f"Expected a Node, got: {node}"
+        assert not node.parent, "Cannot add node to {0}, it already has a parent: {1}".format(
+            self, node)
         node.parent = self
-        # And we assign it
-        self._children[key] = node
+        self._children.append(node)
         return node
 
-    def has(self, key: str) -> bool:
-        return key in self._children
+    def set(self, index, node: 'Node') -> 'Node':
+        assert isinstance(node, Node), f"Expected a Node, got: {node}"
+        assert not node.parent, "Cannot set node to {0}, it already has a parent: {1}".format(
+            self, node)
+        n = len(self._children)
+        if n == 0:
+            return self.add(node)
+        else:
+            # NOTE: We don't want to use detach here
+            i = min(max(0, n + index if index < 0 else index), n - 1)
+            previous = self._children[i]
+            self._children[i] = node
+            previous.parent = None
+            node.parent = self
+            return node
 
-    def get(self, key: str) -> Optional['NamedNode']:
-        return self._children[key] if key in self._children else None
+    def setChildren(self, children: Iterable['Node']):
+        if self.children:
+            for child in self.children:
+                child.parent = None
+            self._children = []
+        for child in children:
+            self.append(child)
+        return self
 
-    def resolve(self, path: str, strict=True) -> Optional['NamedNode']:
-        context: NamedNode = self
-        for k in path.split(self.SEPARATOR):
-            if not context.has(k):
-                return None if strict else context
-            else:
-                context = cast(NamedNode, context.get(k))
-        return context
+    def append(self, node: 'Node') -> 'Node':
+        return self.add(node)
 
-    def ensure(self, path: str) -> 'NamedNode':
-        context: NamedNode = self
-        for k in path.split(self.SEPARATOR):
-            if not context:
-                break
-            elif not k:
-                # TODO: This should be a warning here
-                continue
-            elif not context.has(k):
-                context = context.set(k, self.__class__(name=k))
-                assert not context or context.parent, f"Created node should have parent {context}"
-            else:
-                context = cast(NamedNode, context.get(k))
-                assert not context or context.parent, f"Retrieved node should have parent {context}"
-        return context
+    def extend(self, nodes: List['Node']) -> 'Node':
+        for node in nodes:
+            self.add(node.detach())
+        return self
 
-    def walk(self) -> Iterable['NamedNode']:
-        yield self
-        for c in self.children:
-            yield from c.walk()
+    def remove(self, node: 'Node') -> 'Node':
+        assert node.parent is self, "Cannot remove node from {0}, it has a different parent: {1}".format(
+            self, node.parent)
+        node.parent = None
+        self._children.remove(node)
+        return node
 
-    def toPrimitive(self):
-        res = super().toPrimitive()
-        res["name"] = self.name
+    def insert(self, index: int, node: 'Node') -> 'Node':
+        index = index if index >= 0 else len(self._children) + index
+        assert index >= 0 and index <= len(
+            self._children), "Index out of bounds {0} in: {1}".format(index, self)
+        assert not node.parent, "Cannot add node to {0}, it already has a parent: {1}".format(
+            self, node)
+        node.parent = self
+        if index == len(self._children):
+            self._children.append(node)
+        else:
+            self._children.insert(index, node)
+        return node
+
+    def replaceWith(self, nodes: Union['Node', List['Node']]):
+        nodes = [nodes] if isinstance(nodes, Node) else nodes
+        index = self.index()
+        if index is None:
+            assert self.parent
+            for child in self.children:
+                self.parent.append(child)
+        else:
+            for i in range(len(nodes) - 1, -1, -1):
+                if self.parent:
+                    self.parent.insert(index, nodes[i])
+        self.detach()
+        return self
+
+    def walk(self, functor=None, processor=None) -> List[Any]:
+        p = processor or (lambda _: _)
+        return list(p(_) for _ in self.iterWalk(functor))
+
+    def iterWalk(self, functor=None):
+        if (not functor) or functor(self) is not False:
+            yield self
+            for c in self._children:
+                yield from c.iterWalk(functor)
+
+    def asDict(self):
+        res: dict[str, Any] = {"id": self.id}
+        if self.name:
+            res["name"] = self.name
+        if self.parent:
+            res["parent"] = self.parent.id
+        if self.attributes:
+            res["attributes"] = self.attributes
+        if self.metadata:
+            res["metadata"] = self.metadata
+        if self._children:
+            res["children"] = [_.asDict() for _ in self._children]
         return res
 
-    def __getitem__(self, name: str):
-        return self.children[name]
+    def iterXML(self) -> Iterable[str]:
+        stop = False
+        if self.name == "text":
+            if "value" in self.attributes and len(self.attributes) == 1:
+                yield str(self.attributes["value"])
+                stop = True
+            elif not self.attributes:
+                yield ""
+                stop = True
+        if not stop:
+            attributes = " ".join(
+                f"{k}={json.dumps(v) if isinstance(v,str) else json.dumps(json.dumps(v))}" for k, v in self.attributes.items())
+            prefix = f"{self.name}{' ' if attributes else ''}{attributes}"
+            if not self._children:
+                yield f"<{prefix} />"
+            else:
+                yield f"<{prefix}>"
+                for child in self._children:
+                    yield from child.iterXML()
+                yield f"</{self.name}>"
 
-    def __str__(self):
-        return f"<NamedNode:{self.name}:{self.id} +{len(self.children)}>"
+    def toXML(self) -> str:
+        return "".join(self.iterXML())
+
+    def iterTDoc(self, level=0) -> Iterable[str]:
+        attributes = " ".join(f"{k}={repr(v)}" for k,
+                              v in self.attributes.items())
+        yield f"{self.name or 'â'} {attributes}"
+        last_i = len(self.children) - 1
+        for i, child in enumerate(self.children):
+            for j, line in enumerate(child.iterTDoc(level + 1)):
+                leader = ("ââ " if i == last_i else "ââ ") if j == 0 else (
+                    "   " if i == last_i else "â  ")
+                yield leader + line
+
+    def toTDoc(self) -> str:
+        return "\n".join(self.iterTDoc())
+
+    def __getitem__(self, index: Union[int, str]):
+        if isinstance(index, str):
+            if index not in self.attributes:
+                raise IndexError(f"Node has no attribute '{index}': {self}")
+            else:
+                return self.attributes[index]
+        else:
+            return self._children[index]
+
+    # FIXME: Does not seem to work, should check
+    def __contains__(self, value: Union[int, str, 'Node']) -> bool:
+        if isinstance(value, int):
+            return value >= 0 and value < self.count
+        elif isinstance(value, Node):
+            return value in self._children
+        elif isinstance(value, str):
+            return value in self.attributes
+        else:
+            return False
+
+    def __repr__(self):
+        return f"<Node:{self.name} {' '.join(str(k)+'='+repr(v) for k,v in self.attributes.items())}{' …' + str(len(self.children)) if self._children else ''}>"
 
 
 def toASCIILines(node: Node, prefix="") -> Iterable[str]:
@@ -536,5 +405,4 @@ def toSExpr(node: Node, numbers=False) -> str:
 
 def toGraphviz(node: Node, numbers=False) -> str:
     return toText(toGraphvizLines(node), numbers=numbers)
-
 # EOF

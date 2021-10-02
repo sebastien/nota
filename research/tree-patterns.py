@@ -1,8 +1,10 @@
 from nota.format.nd import parse
 from nota.utils.tree import Node, toSExpr
-from typing import ContextManager, Optional, Iterable
-import inspect
+from typing import ContextManager, Optional, Iterable, Union, Generic, TypeVar, cast
 from enum import Enum
+from fnmatch import fnmatch
+import inspect
+import functools
 
 # --
 # This notebook explores the declaration of tree transformations
@@ -11,8 +13,11 @@ from enum import Enum
 # something that is expressive. Tree-Sitter pattern queries
 # are also a good example of expresive patterns.
 
+T = TypeVar('T')
 
 # SEE: https://github.com/sebastien/tlang/blob/master/docs/query.txto
+
+
 class Axis(Enum):
     NextSiblings = ">"
     PreviousSiblings = ">"
@@ -27,10 +32,23 @@ class Query:
         self.axis = axis
 
     def match(self, node: Node) -> bool:
-        if node.name.startswith(self.name):
+        if fnmatch(node.name, self.name):
             return True
         else:
             return False
+
+    def matchGroups(self, node: Node) -> Iterable[list[Node]]:
+        group = 0
+        res = []
+        for g, n in self.matchIter(node):
+            if g == group:
+                res.append(n)
+            elif res:
+                yield res
+                res = []
+            group = g
+        if res:
+            yield res
 
     def matchIter(self, node: Node) -> Iterable[tuple[int, Node]]:
         """Iterates through the matches of that query, starting with
@@ -71,49 +89,94 @@ class Query:
         else:
             raise ValueError(f"Unsuported axis: {axis}")
 
+    def __str__(self):
+        return f"<Query {self.axis.value if self.axis else '/'}{self.name}>"
+
+
+class MatchContext:
+
+    def __init__(self, parent: Optional['MatchContext'] = None):
+        self.parent = parent
+        self.entries: dict[int, list[Node]] = {}
+
+    def set(self, id: int, nodes: list[Node]) -> list[Node]:
+        self.entries[id] = nodes
+        return nodes
+
+    def get(self, id: int) -> Optional[list[Node]]:
+        if id in self.entries:
+            return self.entries[id]
+        elif self.parent:
+            return self.parent.get(id)
+        else:
+            return None
+
+    def derive(self) -> 'MatchContext':
+        return MatchContext(self)
+
+
+class Transform:
+
+    def apply(self, context: MatchContext):
+        raise NotImplementedError
+
 
 class Selection(ContextManager):
 
+    IDS: int = 0
+    Stack: list['Selection'] = []
+
     def __init__(self, query: Query):
+        self.id = Selection.IDS = Selection.IDS + 1
         self.query = query
         self.parent: Optional[Selection] = None
-        self.children: list[Selection] = []
+        self.selections: list[Selection] = []
+        self.transforms: list[Transform] = []
 
-    def add(self, selection: 'Selection') -> 'Selection':
-        assert not selection.parent
-        assert not selection in self.children
-        selection.parent = self
-        self.children.append(selection)
-        return selection
+    def add(self, value: Union['Selection', Transform]) -> Union['Selection', Transform]:
+        if isinstance(value, Transform):
+            transform = value
+            self.transforms.append(transform)
+            return transform
+        else:
+            selection = value
+            assert not selection.parent
+            assert not selection in self.selections
+            selection.parent = self
+            self.selections.append(selection)
+            return selection
 
     # --
     # Queries
 
     def select(self, name: str) -> 'Selection':
-        return self.add(Selection(Query(name)))
+        return cast(Selection, self.add(Selection(Query(name))))
 
     def next(self, name: str) -> 'Selection':
-        return self.add(Selection(Query(name, axis=Axis.NextSiblings)))
-
-    # --
-    # Operations
-
-    def replaceWith(self, *nodes):
-        return self
-
-    def remove(self, *nodes):
-        return self.replaceWith()
+        return cast(Selection, self.add(Selection(Query(name, axis=Axis.NextSiblings))))
 
     # --
     # Application
-    def apply(self, node: Node):
-        for group, matched in self.query.matchIter(node):
-            print(group, matched)
+
+    def apply(self, node: Node, context: Optional[MatchContext] = None):
+        ctx = MatchContext() if context is None else context
+        for nodes in self.query.matchGroups(node):
+            ctx.set(self.id, nodes)
+            for transform in self.transforms:
+                transform.apply(ctx)
+            for selection in self.selections:
+                # FIXME: This should really be addressed holistically,
+                # as it will be super inefficient if the selection
+                # is a siblings or descendants
+                derived = ctx.derive()
+                for node in nodes:
+                    selection.apply(node, derived)
 
     # --
     # Context
 
     def __enter__(self):
+        Selection.Stack.append(self)
         return self
 
     def __exit__(self, type, value, traceback):
@@ -127,15 +190,66 @@ class Selection(ContextManager):
             #     env = os.getenv(k, None)
             #     if env is not None:
             #         parent_locals[k] = self.ACCEPTED_TYPES[t](env)
+        Selection.Stack.pop()
+
+    def __str__(self):
+        return f"<Selection id={self.id} query=\"{self.query.axis.value if self.query.axis else '/'}{self.query.name}\">"
 
 
-def select(name: str):
+class Replace(Transform):
+
+    def __init__(self, original: Selection, new: Selection):
+        self.original = original
+        self.new = new
+
+    def apply(self, context: MatchContext):
+        a = context.get(self.original.id)
+        b = context.get(self.new.id)
+        print("Replace", a, b)
+
+
+class Remove(Transform):
+
+    def __init__(self, selection: Selection):
+        selection
+
+    def apply(self, context: MatchContext):
+        print("Remove", context)
+
+# --
+# We use a React-like functional API that will automatically
+# register created objects in the currnet chain. This pattern
+# leverages
+
+
+def registered(f):
+    """Decorator that passes the result of the wrapped function
+    to `register`"""
+    def wrapper(*args, **kwargs):
+        res = f(*args, **kwargs)
+        return Selection.Stack[-1].add(res) if Selection.Stack else res
+    functools.update_wrapper(wrapper, f)
+    return wrapper
+
+
+@registered
+def select(name: str) -> Selection:
     return Selection(Query(name))
+
+
+@registered
+def replace(original: Selection, by: Selection) -> Replace:
+    return Replace(original, by)
+
+
+@registered
+def remove(selection: Selection) -> Remove:
+    return Remove(selection)
 
 
 with (ListItems := select("paragraph")) as p:
     with p.select("list-item") as c:
-        p.replaceWith(c)
+        replace(p, c)
 
 
 # We want the following
@@ -162,11 +276,11 @@ with (ListItems := select("paragraph")) as p:
 
 with (ExpandParagraphs := select("paragraph")) as p:
     with select("*") as contents:
-        p.replaceWith(contents)
+        replace(p, contents)
 
 with (AggregateText := select("#text")) as p:
     with p.next("#text") as text:
-        p.remove()
+        remove(p)
 
 
 tree = parse("""
@@ -182,6 +296,6 @@ tree = parse("""
   sadada
 
 """)
-print(toSExpr(tree))
+# print(toSExpr(tree))
 ExpandParagraphs.apply(tree)
 # EOF
