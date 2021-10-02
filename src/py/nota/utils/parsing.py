@@ -1,4 +1,4 @@
-from typing import NamedTuple, Optional, Iterable
+from typing import NamedTuple, Optional, Iterable, Hashable
 import re
 
 
@@ -49,7 +49,7 @@ class Pattern:
             return None
 
 
-def parse(patterns: dict[str, Pattern], text: str, lookahead: int = 80*20) -> Iterable[tuple[str, Match]]:
+def parse(patterns: dict[Hashable, Pattern], text: str, lookahead: int = 80*20) -> Iterable[tuple[str, Match]]:
     """Takes a set of named patterns and yields a stream of `(name,match)` couples."""
     fragment: Optional[Fragment] = Fragment(text, 0, lookahead)
     while fragment:

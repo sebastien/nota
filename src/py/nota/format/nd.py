@@ -1,17 +1,17 @@
 import re
 from ..utils.tree import Node, toSExpr
-from ..utils.parsing import Pattern, Match, parse
+from ..utils import parsing
 from dataclasses import dataclass
-from typing import Iterable, Optional, Union
+from typing import Iterable, Optional, cast
 from ..model import ReferenceType, Reference
 
 
 def inline(expr: str, multiline=True):
-    return Pattern(re.compile(expr, re.MULTILINE if multiline else 0))
+    return parsing.Pattern(re.compile(expr, re.MULTILINE if multiline else 0))
 
 
 def block(expr: str, open=True, multiline=False):
-    return Pattern(re.compile(expr, re.MULTILINE if multiline else 0), type="open" if open else "closed")
+    return parsing.Pattern(re.compile(expr, re.MULTILINE if multiline else 0), type="open" if open else "closed")
 
 
 def closedblock(expr: str, multiline=False):
@@ -29,6 +29,7 @@ def text(content: str):
     return Node("#text", data=content)
 
 
+# NOTE: Leaving this there for now, as I'm not sure if we'll go down that route.
 # class TreeBuilder:
 #
 #     def __init__(self):
@@ -113,9 +114,11 @@ STRUCTURE = {
 }
 
 
-def indentation(text: str, tabsize=4) -> int:
+def indentation(line: str, tabsize=4) -> int:
+    """Returns the indentation level of the given `line`, expanding tabs
+    to spaces."""
     indent = 0
-    for c in text:
+    for c in line:
         if c == ' ':
             indent += 1
         elif c == '\t':
@@ -134,16 +137,18 @@ class Block:
 
 def references(text: str) -> list[Block]:
     res = []
-    for reftype, delimiter in parse(REFERENCES, text):
+    for reftype, delimiter in cast(Iterable[tuple[ReferenceType, parsing.Match]], parsing.parse(REFERENCES, text)):
         res.append(Reference(reftype, delimiter.match.group()))
     return res
 
 
-def structure(text: str) -> list[Block]:
+def structure(text: str, patterns: dict[str, parsing.Pattern] = STRUCTURE) -> list[Block]:
+    """Parses the given text using the given patterns, and returns the list of
+    recognized blocks. The patterns are used as delimiters."""
     offset = 0
     block: Optional[Block] = None
     blocks: list[Block] = []
-    for name, delimiter in parse(STRUCTURE, text):
+    for name, delimiter in parsing.parse(patterns, text):
         before = text[offset:delimiter.fragment.start]
         if not before:
             pass
@@ -164,6 +169,8 @@ def structure(text: str) -> list[Block]:
 
 
 def tree(blocks: list[Block]) -> Node:
+    """Takes the list of blocks returned by `structure` and folds them into
+    a tree."""
     stack: list[tuple[Block, Node]] = []
     root = node("document")
     for block in blocks:
@@ -178,9 +185,13 @@ def tree(blocks: list[Block]) -> Node:
     return root
 
 
-with open("/home/sebastien/.nota/tools/git.nd", "rt") as f:
-    value = f.read()
-    print(toSExpr(tree(structure(value))))
-    print(references(value))
+def parse(text: str) -> Node:
+    return tree(structure(text))
+
+
+# with open("/home/sebastien/.nota/tools/git.nd", "rt") as f:
+# value = f.read()
+# print(toSExpr(tree(structure(value))))
+# print(references(value))
 
 # EOF
