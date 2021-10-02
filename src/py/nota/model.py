@@ -1,19 +1,35 @@
-from typing import NamedTuple
+from enum import Enum
+from dataclasses import dataclass
 
 
-class Range(NamedTuple):
+@dataclass
+class Note:
+    path: str
+
+
+@dataclass
+class Fragment:
+    path: str
     start: int
     end: int
 
 
-class Note:
+class ReferenceType(Enum):
+    Tag = "tag"
+    Entity = "entity"
+    Link = "link"
+    Term = "term"
+    Date = "date"
+    Time = "time"
+    Datetime = "time"
+    URL = "url"
+    Email = "email"
 
-    def __init__(self, path: str):
-        self.path = path
+
+@dataclass
+class Reference:
+    type: ReferenceType
+    value: str
 
 
-class Region:
-
-    def __init__(self, path: str, start: int, end: int):
-        self.path = path
-        self.range = Range(start, end)
+# EOF

@@ -24,3 +24,9 @@
 # Store
 
 `~/.config/nota/$NOTEBOOK`
+
+
+# Implementation
+
+- *Filesystem backend*: we're working with hierarchical text documents, which
+  makes using the filesystem a good option.

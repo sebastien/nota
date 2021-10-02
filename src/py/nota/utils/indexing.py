@@ -76,8 +76,4 @@ def find(index: dict[str, list[Entry]], query: str) -> Iterable[Match]:
     yield from sorted(matches(index, query), key=lambda _: (_.score, _.entry.start))
 
 
-with open("/home/sebastien/.nota/tools/git.nd", "rt") as f:
-    idx = index(f.read(), "tools/git")
-    print(list(find(idx, "as")))
-
 # EOF
