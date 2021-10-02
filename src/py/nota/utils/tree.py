@@ -55,7 +55,7 @@ class Node:
 
     @property
     def name(self):
-        return self._name or self.id
+        return self._name or str(self.id)
 
     @property
     def root(self) -> Optional['Node']:
@@ -63,6 +63,10 @@ class Node:
         while node := self.parent:
             root = node
         return root
+
+    @property
+    def index(self) -> int:
+        return self.parent.children.index(self) if self.parent else 0
 
     @property
     def cacheKey(self):
@@ -107,6 +111,42 @@ class Node:
         for child in self.children:
             yield child
             yield from child.descendants
+
+    @property
+    def nextSibling(self) -> Optional['Node']:
+        if not self.parent:
+            return None
+        children = self.parent.children
+        i = children.index(self)
+        assert i >= 0
+        return children[i+1] if i + 1 < len(children) else None
+
+    @property
+    def previousSibling(self) -> Optional['Node']:
+        if not self.parent:
+            return None
+        children = self.parent.children
+        i = children.index(self)
+        assert i >= 0
+        return children[i-1] if i > 0 else None
+
+    @property
+    def previousSiblings(self) -> Iterable['Node']:
+        if not self.parent:
+            return ()
+        children = self.parent.children
+        i = children.index(self)
+        assert i >= 0
+        return reversed(children[0:i])
+
+    @property
+    def nextSiblings(self) -> Iterable['Node']:
+        if not self.parent:
+            return ()
+        children = self.parent.children
+        i = children.index(self)
+        assert i >= 0
+        return children[i:]
 
     @property
     def leaves(self) -> Iterable['Node']:
