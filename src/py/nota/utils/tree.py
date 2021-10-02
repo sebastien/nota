@@ -48,6 +48,7 @@ class Node:
         self._children: list['Node'] = []
         self.parent: Optional['Node'] = None
         self.data = data
+        self.attributes: dict[str, Any] = {}
         self.meta: dict[str, Any] = {}
         self.handlers: Optional[dict[str, Callable]] = None
         self.changed = time.time()
@@ -65,7 +66,7 @@ class Node:
         return root
 
     @property
-    def index(self) -> int:
+    def parentIndex(self) -> int:
         return self.parent.children.index(self) if self.parent else 0
 
     @property
@@ -149,6 +150,14 @@ class Node:
         return children[i:]
 
     @property
+    def firstChild(self) -> Optional['Node']:
+        return self._children[0] if self._children else None
+
+    @property
+    def lastChild(self) -> Optional['Node']:
+        return self._children[-1] if self._children else None
+
+    @property
     def leaves(self) -> Iterable['Node']:
         if not self.children:
             yield self
@@ -163,6 +172,25 @@ class Node:
     @property
     def isLeaf(self) -> bool:
         return not self.children
+
+    @property
+    def hasAttributes(self) -> bool:
+        return len(self.attributes) > 0
+
+    def hasAttribute(self, name: str) -> bool:
+        return name in self.attributes
+
+    def setAttribute(self, name, value=None):
+        self.attributes[name] = value
+        return self
+
+    def removeAttribute(self, name):
+        del self.attributes[name]
+        return self
+
+    def updateAttributes(self, attributes):
+        self.attributes.update(attributes)
+        return self
 
     # NOTE: We use an accesor as filesystem nodes do not store children
     # in memory.
@@ -230,11 +258,74 @@ class Node:
             self.children.append(node)
         return node
 
+    def set(self, index, node: 'Node') -> 'Node':
+        assert isinstance(node, Node), f"Expected a Node, got: {node}"
+        assert not node.parent, "Cannot set node to {0}, it already has a parent: {1}".format(
+            self, node)
+        n = len(self._children)
+        if n == 0:
+            return self.add(node)
+        else:
+            # NOTE: We don't want to use detach here
+            i = min(max(0, n + index if index < 0 else index), n - 1)
+            previous = self._children[i]
+            self._children[i] = node
+            previous.parent = None
+            node.parent = self
+            return node
+
+    def setChildren(self, children: Iterable['Node']):
+        if self.children:
+            for child in self.children:
+                child.parent = None
+            self._children = []
+        for child in children:
+            self.append(child)
+        return self
+
     def remove(self, node: 'Node'):
         assert node.parent == self
         self._children.remove(node)
         node.parent = None
         return node
+
+    def detach(self) -> 'Node':
+        if self.parent:
+            self.parent.remove(self)
+        return self
+
+    def index(self, node=None) -> Optional[int]:
+        if not node:
+            return self.parent.index(self) if self.parent else None
+        else:
+            return self._children.index(node)
+
+    def wrap(self, node: "Node") -> 'Node':
+        """Moves the current node into the given `node`, attaching the given
+        `node` where the current node was in the parent."""
+        parent = self.parent
+        if parent:
+            i = parent.index(self)
+            parent.set(i, node)
+        node.append(self)
+        return self
+
+    def absorb(self, node: "Node") -> 'Node':
+        """Detaches the given node and merges in its children and attributes."""
+        node.detach()
+        self.merge(node)
+        return self
+
+    def merge(self, node: 'Node', attributes=True, replace=False) -> 'Node':
+        children = [_ for _ in node._children]
+        if attributes:
+            # TODO: We could do a smarter merge
+            for k, v in node.attributes.items():
+                if replace or k not in self.attributes:
+                    self.attributes[k] = v
+        for c in children:
+            self.add(c.detach())
+        return self
 
     def touch(self):
         """Marks this node as changed, capturing the timestamp and
@@ -250,6 +341,16 @@ class Node:
         for c in self.children:
             yield from c.walk()
 
+    def copy(self, depth=-1):
+        """Does a deep copy of this node. If a depth is given, it will
+        stop at the given depth."""
+        node = self.__class__(self.name)
+        self.attributes = {k: v for k, v in self.attributes.items()}
+        if depth != 0:
+            for child in self._children:
+                node.append(child.copy(depth - 1))
+        return node
+
     def toPrimitive(self):
         return {
             "id": self.id,
@@ -257,8 +358,9 @@ class Node:
             "children": [_.toPrimitive() for _ in self.children],
         }
 
-    def __str__(self):
-        return f"<{self.__class__.__name__} id={self.id} {f'…{len(self.children)}>' if self.children else '/>'}"
+    def __repr__(self):
+        name = f"name={self.name} id={self.id}" if self._name else f"id={self.id}"
+        return f"<{self.__class__.__name__} {name} {f'…{len(self.children)}>' if self.children else '/>'}"
 
     def toASCII(self) -> str:
         return toASCII(self)
