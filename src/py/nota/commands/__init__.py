@@ -86,6 +86,17 @@ def find(context, query: str):
             f"[{round(score*100):3d}%] {entry.source}: {entry.original}")
 
 
+@cli(alias="q|s", options={
+    "-c,--created": "Show notes by creation date",
+    "-r,--read": "Show recently accessed notes",
+    "-w,--write": "Show recently written/edited notes",
+    "-a,--ascending": "Shows results in ascending order",
+})
+def recent(context, query):
+    """Shows the recently accessed or edited notes."""
+    pass
+
+
 def run(args=sys.argv[1:]):
     return runcli(args, name="nota", context=Context())
 
