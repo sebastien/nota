@@ -1,5 +1,6 @@
-from typing import Optional, Optional, Any, List, Dict, Union, Iterable
+from typing import Optional, Optional, Any, Union, Iterable
 import json
+from copy import copy as pycopy
 
 
 # NOTE: This is copied from parsource, originally from tlang.
@@ -14,23 +15,24 @@ class Node:
             name, str), f"Node name must be a string, got: {name}"
         self.name = name
         self.id = Node.IDS
+        self.data: Any = None
         Node.IDS += 1
         self.parent: Optional['Node'] = None
         # FIXME: This does not support namespaces for attributes
-        self.attributes: Dict[str, Any] = attributes
-        self._children: List['Node'] = []
-        self.metadata: Optional[Dict[str, Any]] = None
+        self.attributes: dict[str, Any] = attributes
+        self._children: list['Node'] = []
+        self.metadata: Optional[dict[str, Any]] = None
 
     @property
     def head(self) -> Optional['Node']:
         return self._children[0] if self._children else None
 
     @property
-    def tail(self) -> List['Node']:
+    def tail(self) -> list['Node']:
         return self._children[1:]
 
     @property
-    def children(self) -> List['Node']:
+    def children(self) -> list['Node']:
         return self._children
 
     @property
@@ -144,8 +146,8 @@ class Node:
         """Does a deep copy of this node. If a depth is given, it will
         stop at the given depth."""
         node = Node(self.name)
-        self.attributes = type(self.attributes)((k, v)
-                                                for k, v in self.attributes.items())
+        self.data = pycopy(self.data)
+        self.attributes = pycopy(self.attributes)
         if depth != 0:
             for child in self._children:
                 node.append(child.copy(depth - 1))
@@ -225,7 +227,7 @@ class Node:
     def append(self, node: 'Node') -> 'Node':
         return self.add(node)
 
-    def extend(self, nodes: List['Node']) -> 'Node':
+    def extend(self, nodes: list['Node']) -> 'Node':
         for node in nodes:
             self.add(node.detach())
         return self
@@ -250,7 +252,7 @@ class Node:
             self._children.insert(index, node)
         return node
 
-    def replaceWith(self, nodes: Union['Node', List['Node']]):
+    def replaceWith(self, nodes: Union['Node', list['Node']]):
         nodes = [nodes] if isinstance(nodes, Node) else nodes
         index = self.index()
         if index is None:
@@ -264,7 +266,7 @@ class Node:
         self.detach()
         return self
 
-    def walk(self, functor=None, processor=None) -> List[Any]:
+    def walk(self, functor=None, processor=None) -> list[Any]:
         p = processor or (lambda _: _)
         return list(p(_) for _ in self.iterWalk(functor))
 
