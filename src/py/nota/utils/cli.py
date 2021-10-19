@@ -41,8 +41,8 @@ class Command(NamedTuple):
     aliases: list[str]
 
 
-def cli(*args: str, options: Optional[list[Callable]] = None, alias: Optional[str] = None):
-    """Decorator used to register a function as a CLI command. Argumnets
+def command(*args: str, options: Optional[list[Callable]] = None, alias: Optional[str] = None):
+    """Decorator used to register a function as a CLI command. Arguments
     are like `("-o","-f|--format", "FILE+")` and the decorated function
     should have a documentation that contains lines like
     `o: Output file` or `format: Output format` or `FILE: Input file(s)`."""
@@ -109,7 +109,7 @@ def cli(*args: str, options: Optional[list[Callable]] = None, alias: Optional[st
     return wrapper
 
 
-def runcli(args: list[str] = sys.argv[1:], name=None, description=None, context=None) -> int:
+def run(args: list[str] = sys.argv[1:], name=None, description=None, context=None) -> int:
     """Runs the given command, as passed on the command line"""
     # FROM: https://stackoverflow.com/questions/10448200/how-to-parse-multiple-nested-sub-commands-using-python-argparse
     if not args:

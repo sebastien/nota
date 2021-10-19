@@ -2,9 +2,8 @@ import sys
 import os
 import re
 import subprocess
-from pathlib import Path
 from typing import Optional, Iterable
-from ..utils.cli import runcli, cli
+from ..utils import cli
 from ..operations import Operations
 from ..store import Store
 from ..utils import indexing
@@ -61,19 +60,19 @@ class Context:
 RE_INT = re.compile("^\d+$")
 
 
-@cli("NAME", alias="e|ed")
+@cli.command("NAME", alias="e|ed")
 def edit(context, name: str):
     """XXXX"""
     context.edit(context.getNote(name))
 
 
-@cli("QUERY?", alias="l|ls")
+@cli.command("QUERY?", alias="l|ls")
 def _list(context, query: Optional[str] = None):
     """XXXX"""
     context.displayEnumeratedList(context.do.listNotes())
 
 
-@cli("QUERY", alias="q|s")
+@cli.command("QUERY", alias="q|s")
 def find(context, query: str):
     """XXXX"""
     idx: dict[str, list[indexing.Entry]] = {}
@@ -86,19 +85,19 @@ def find(context, query: str):
             f"[{round(score*100):3d}%] {entry.source}: {entry.original}")
 
 
-@cli(alias="q|s", options={
-    "-c,--created": "Show notes by creation date",
-    "-r,--read": "Show recently accessed notes",
-    "-w,--write": "Show recently written/edited notes",
-    "-a,--ascending": "Shows results in ascending order",
-})
+@cli.command(alias="q|s", options=[
+    cli.option("-c", "--created", help="Show notes by creation date"),
+    cli.option("-r", "--read", help="Show recently accessed notes"),
+    cli.option("-w", "--write", help="Show recently written/edited notes"),
+    cli.option("-a", "--ascending", help="Shows results in ascending order"),
+])
 def recent(context, query):
     """Shows the recently accessed or edited notes."""
     pass
 
 
 def run(args=sys.argv[1:]):
-    return runcli(args, name="nota", context=Context())
+    return cli.run(args, name="nota", context=Context())
 
 
 if __name__ == "__main__":
