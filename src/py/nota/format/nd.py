@@ -26,7 +26,9 @@ def node(name: str, content: Optional[list[str]] = None):
 
 
 def text(content: str):
-    return Node("#text", data=content)
+    res = Node("#text")
+    res.data = content
+    return res
 
 
 # NOTE: Leaving this there for now, as I'm not sure if we'll go down that route.

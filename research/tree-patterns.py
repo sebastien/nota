@@ -27,25 +27,54 @@ class Axis(Enum):
 
 class Query:
 
-    def __init__(self, name: str, axis: Optional[Axis] = None):
+    @classmethod
+    def Parse(cls, query: str) -> 'Query':
+        axis = None
+        name = query
+        limit = None
+        if query.startswith("//"):
+            axis = Axis.Descendants
+            name = name[2:]
+        elif query.startswith("/"):
+            axis = Axis.Descendants
+            limit = 1
+            name = name[1:]
+        elif query.startswith(">>"):
+            axis = Axis.NextSiblings
+            name = name[2:]
+        elif query.startswith(">"):
+            axis = Axis.NextSiblings
+            limit = 1
+            name = name[1:]
+        elif query.startswith(">>"):
+            axis = Axis.PreviousSiblings
+            name = name[2:]
+        elif query.startswith(">"):
+            axis = Axis.PreviousSiblings
+            limit = 1
+            name = name[1:]
+        return cls(name, axis, limit)
+
+    def __init__(self, name: str, axis: Optional[Axis] = None, limit: Optional[int] = None):
         self.name = name
         self.axis = axis
+        self.limit = limit
 
     def match(self, node: Node) -> bool:
-        if fnmatch(node.name, self.name):
+        name = node.name.split(":", 1)[0]
+        if fnmatch(name, self.name):
             return True
         else:
             return False
 
     def matchGroups(self, node: Node) -> Iterable[list[Node]]:
         group = 0
-        res = []
+        res: list[Node] = []
         for g, n in self.matchIter(node):
-            if g == group:
-                res.append(n)
-            elif res:
+            if g != group and res:
                 yield res
                 res = []
+            res.append(n)
             group = g
         if res:
             yield res
@@ -89,8 +118,9 @@ class Query:
         else:
             raise ValueError(f"Unsuported axis: {axis}")
 
-    def __str__(self):
-        return f"<Query {self.axis.value if self.axis else '/'}{self.name}>"
+    def __repr__(self):
+        axis = self.axis.value if self.axis else "/"
+        return f"(select \"{axis}{self.limit or axis}{self.name}\")"
 
 
 class MatchContext:
@@ -149,11 +179,11 @@ class Selection(ContextManager):
     # --
     # Queries
 
-    def select(self, name: str) -> 'Selection':
-        return cast(Selection, self.add(Selection(Query(name))))
+    def select(self, query: str) -> 'Selection':
+        return cast(Selection, self.add(Selection(Query.Parse(query))))
 
-    def next(self, name: str) -> 'Selection':
-        return cast(Selection, self.add(Selection(Query(name, axis=Axis.NextSiblings))))
+    def next(self, query: str) -> 'Selection':
+        return cast(Selection, self.add(Selection(Query(query, axis=Axis.NextSiblings))))
 
     # --
     # Application
@@ -171,6 +201,8 @@ class Selection(ContextManager):
                 derived = ctx.derive()
                 for node in nodes:
                     selection.apply(node, derived)
+            # for node in nodes:
+            #     yield node
 
     # --
     # Context
@@ -202,10 +234,21 @@ class Replace(Transform):
         self.original = original
         self.new = new
 
+    # FIXME: That does not quite work, as we basically need to remap
+    # a tree A to a tree B. In a way, the apply should produce a list of remappings
+    # and then as a result, tree B should be constructed from the remapping. Otherwise
+    # we'd be iterating on a mutable structure, which we don't want.
     def apply(self, context: MatchContext):
-        a = context.get(self.original.id)
-        b = context.get(self.new.id)
-        print("Replace", a, b)
+        la = context.get(self.original.id) or ()
+        lb = context.get(self.new.id) or ()
+        replaced = []
+        for a in la:
+            parent = a.parent
+            print("Replacing", toSExpr(parent))
+            for b in lb:
+                if a.parent:
+                    a.replaceWith(b.copy())
+            print("XXX replaced", toSExpr(parent))
 
 
 class Remove(Transform):
@@ -215,6 +258,16 @@ class Remove(Transform):
 
     def apply(self, context: MatchContext):
         print("Remove", context)
+
+
+class Effect(Transform):
+
+    def __init__(self, selection: Selection, functor):
+        self.selection = selection
+        self.functor = functor
+
+    def apply(self, context: MatchContext):
+        self.functor(context.get(self.selection.id))
 
 # --
 # We use a React-like functional API that will automatically
@@ -233,8 +286,8 @@ def registered(f):
 
 
 @registered
-def select(name: str) -> Selection:
-    return Selection(Query(name))
+def select(query: str) -> Selection:
+    return Selection(Query.Parse(query))
 
 
 @registered
@@ -245,6 +298,11 @@ def replace(original: Selection, by: Selection) -> Replace:
 @registered
 def remove(selection: Selection) -> Remove:
     return Remove(selection)
+
+
+@registered
+def effect(selection: Selection, functor) -> Effect:
+    return Effect(selection, functor)
 
 
 with (ListItems := select("paragraph")) as p:
@@ -274,9 +332,10 @@ with (ListItems := select("paragraph")) as p:
 # - Any paragraph content is merged in to the parent
 # - Consecutive text nodes are merged
 
-with (ExpandParagraphs := select("paragraph")) as p:
+with (ExpandParagraphs := select("//paragraph")) as p:
     with select("*") as contents:
         replace(p, contents)
+        effect(contents, lambda _: print("Content", _))
 
 with (AggregateText := select("#text")) as p:
     with p.next("#text") as text:
@@ -297,5 +356,13 @@ tree = parse("""
 
 """)
 # print(toSExpr(tree))
-ExpandParagraphs.apply(tree)
+# print("*" * 20)
+print(ExpandParagraphs)
+print(ExpandParagraphs.apply(tree))
+print("OK")
+# print(toSExpr(tree))
+# print("*" * 20)
+
+# print(list(select("//list-item").apply(tree)))
+
 # EOF
