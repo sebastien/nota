@@ -17,10 +17,19 @@ from tree_sitter import Language, Node, Tree as TSBaseParser
 
 # NOTE: This only works when building from source
 BASE_PATH = Path(__file__).parent.parent.parent.parent.parent
-DEPS_PATH = BASE_PATH.joinpath("deps")
+DEPS_PATH = BASE_PATH.joinpath(".deps/src")
 BUILD_PATH = BASE_PATH.joinpath("build")
 LIBRARY_PATH = BUILD_PATH.joinpath("c'python-treesitter.so")
 LANGUAGES = ["python", "javascript", "go"]
+if not DEPS_PATH.exists():
+    DEPS_PATH.mkdir(parents=True, exist_ok=True)
+for lang in LANGUAGES:
+    lang_path = DEPS_PATH
+    print("lang")
+    repo_url = f"https://github.com/tree-sitter/tree-sitter-{lang}.git"
+    repo_path = DEPS_PATH / f"tree-sitter-{lang}"
+    repo_path
+
 Language.build_library(
     str(LIBRARY_PATH),
     [f"{DEPS_PATH}/tree-sitter-{_}" for _ in LANGUAGES]
