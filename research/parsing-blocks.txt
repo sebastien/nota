@@ -1,23 +1,23 @@
 
 # --
-# Text
+# [0]Cell: Text
 
 # Comment
 
 # --
-# Symbol: A
+# [1]Cell: A
 class A:
 
 	# --
-	# Symbol: A.A
+	# [2]Cell: A.A
 	A = 20
 
 	# --
-	# Symbol: A.method_a
+	# [3]Cell: A.method_a
 	def method_a( self, p0, p1 ):
 		v0 = 1
 		# --
-		# Test
+		# [4]Cell: variable
 		v0 = 2
 
 # EOF
