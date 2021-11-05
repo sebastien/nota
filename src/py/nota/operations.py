@@ -1,9 +1,6 @@
 from typing import Iterable, Optional
-from .model import Note
+from .model import Note, NotePath
 from .store import Store, EditSession
-
-
-NotePath = str
 
 
 class Operations:

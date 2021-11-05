@@ -1,6 +1,8 @@
 from enum import Enum
 from dataclasses import dataclass
 
+NotePath = str
+
 
 @dataclass
 class Note:

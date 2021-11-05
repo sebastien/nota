@@ -3,6 +3,8 @@ import os
 import re
 import subprocess
 from typing import Optional, Iterable
+from ..model import NotePath, Reference
+from ..format import nd
 from ..utils import cli
 from ..operations import Operations
 from ..store import Store
@@ -72,7 +74,7 @@ def _list(context, query: Optional[str] = None):
     context.displayEnumeratedList(context.do.listNotes())
 
 
-@cli.command("QUERY", alias="q|s")
+@cli.command("QUERY", alias="q|s|search")
 def find(context, query: str):
     """XXXX"""
     idx: dict[str, list[indexing.Entry]] = {}
@@ -85,7 +87,23 @@ def find(context, query: str):
             f"[{round(score*100):3d}%] {entry.source}: {entry.original}")
 
 
-@cli.command(alias="q|s", options=[
+@cli.command("TERM*", alias="i")
+def index(context, query: str):
+    """Lists all the entities defined in the content"""
+    idx: dict[str, list[indexing.Entry]] = {}
+    refs: dict[str, tuple[Reference, list[NotePath]]] = {}
+    for note in context.do.listNotes():
+        text = context.do.readNote(note)
+        for ref in nd.references(text):
+            if ref.value in refs:
+                refs[ref.value][1].append(note)
+            else:
+                refs[ref.value] = (ref, [note])
+    for key in sorted(refs):
+        print(key, len(refs[key][1]), [_ for _ in refs[key][1]])
+
+
+@ cli.command(alias="q|s", options=[
     cli.option("-c", "--created", help="Show notes by creation date"),
     cli.option("-r", "--read", help="Show recently accessed notes"),
     cli.option("-w", "--write", help="Show recently written/edited notes"),

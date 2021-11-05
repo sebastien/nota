@@ -137,7 +137,8 @@ class Block:
     content: list[str]
 
 
-def references(text: str) -> list[Block]:
+def references(text: str) -> list[Reference]:
+    """Returns the list of references found in the given list of text"""
     res = []
     for reftype, delimiter in cast(Iterable[tuple[ReferenceType, parsing.Match]], parsing.parse(REFERENCES, text)):
         res.append(Reference(reftype, delimiter.match.group()))

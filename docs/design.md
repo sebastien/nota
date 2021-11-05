@@ -47,6 +47,10 @@ defined as
 
 `~/.config/nota/$NOTEBOOK`
 
+## Git integration
+
+Automatic commit, push/pull by default.
+
 # Implementation
 
   - *Filesystem backend*: we're working with hierarchical text
