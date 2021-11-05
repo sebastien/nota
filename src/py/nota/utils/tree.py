@@ -1,4 +1,5 @@
 from typing import Optional, Optional, Any, Union, Iterable, TypeVar, Generic
+import html
 import json
 
 T = TypeVar('T')
@@ -280,7 +281,7 @@ class Node(Generic[T]):
             for c in self._children:
                 yield from c.iterWalk(functor, processor, filter)
 
-    def asdict(self):
+    def asDict(self):
         res: dict[str, Any] = {"id": self.id}
         if self.name:
             res["name"] = self.name
@@ -291,15 +292,18 @@ class Node(Generic[T]):
         if self.metadata:
             res["metadata"] = self.metadata
         if self._children:
-            res["children"] = [_.asdict() for _ in self._children]
+            res["children"] = [_.asDict() for _ in self._children]
         return res
 
-    def iterXML(self, level=0) -> Iterable[str]:
+    def iterXML(self, level=0, indent="", eol=False) -> Iterable[str]:
         stop = False
-        indent = "  " * level
+        indent_prefix = "" * level
+        name = self.name
+        end = "\n" if eol else ""
         if self.name == "#text":
+            name = "text"
             if "value" in self.attributes and len(self.attributes) == 1:
-                yield str(self.attributes["value"])
+                yield html.escape(str(self.attributes["value"]))
                 stop = True
             elif not self.attributes:
                 yield ""
@@ -307,17 +311,17 @@ class Node(Generic[T]):
         if not stop:
             attributes = " ".join(
                 f"{k}={json.dumps(v) if isinstance(v,str) else json.dumps(repr(v))}" for k, v in self.attributes.items())
-            prefix = f"{self.name}{' ' if attributes else ''}{attributes}"
+            prefix = f"{name}{' ' if attributes else ''}{attributes}"
             if not self._children:
-                yield f"{indent}<{prefix} />\n"
+                yield f"{indent_prefix}<{prefix} />{end}"
             else:
-                yield f"{indent}<{prefix}>\n"
+                yield f"{indent_prefix}<{prefix}>{end}"
                 for child in self._children:
-                    yield from child.iterXML(level+1)
-                yield f"{indent}</{self.name}>\n"
+                    yield from child.iterXML(level+1, indent)
+                yield f"{indent_prefix}</{name}>{end}"
 
-    def toXML(self) -> str:
-        return "".join(self.iterXML())
+    def toXML(self, indent="") -> str:
+        return "".join(self.iterXML(indent=indent))
 
     def iterTDoc(self, level=0) -> Iterable[str]:
         attributes = " ".join(f"{k}={repr(v)}" for k,
