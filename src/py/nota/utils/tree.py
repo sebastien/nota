@@ -1,38 +1,39 @@
-from typing import Optional, Optional, Any, Union, Iterable
+from typing import Optional, Optional, Any, Union, Iterable, TypeVar, Generic
 import json
-from copy import copy as pycopy
+
+T = TypeVar('T')
 
 
 # NOTE: This is copied from parsource, originally from tlang.
-class Node:
+class Node(Generic[T]):
     """A node is an uniquely identified, named object with zero or one parent,
     a set of attributes and a list of children."""
 
     IDS = 0
 
-    def __init__(self, name: str, **attributes):
+    def __init__(self, name: str, attributes: Optional[dict[str, Union[str, int, float, tuple]]] = None):
         assert isinstance(
             name, str), f"Node name must be a string, got: {name}"
         self.name = name
+        self.data: Optional[T] = None
         self.id = Node.IDS
-        self.data: Any = None
         Node.IDS += 1
-        self.parent: Optional['Node'] = None
+        self.parent: Optional['Node[T]'] = None
         # FIXME: This does not support namespaces for attributes
-        self.attributes: dict[str, Any] = attributes
-        self._children: list['Node'] = []
+        self.attributes: dict[str, Any] = attributes if attributes else {}
+        self._children: list['Node[T]'] = []
         self.metadata: Optional[dict[str, Any]] = None
 
     @property
-    def head(self) -> Optional['Node']:
+    def head(self) -> Optional['Node[T]']:
         return self._children[0] if self._children else None
 
     @property
-    def tail(self) -> list['Node']:
+    def tail(self) -> list['Node[T]']:
         return self._children[1:]
 
     @property
-    def children(self) -> list['Node']:
+    def children(self) -> list['Node[T]']:
         return self._children
 
     @property
@@ -40,7 +41,7 @@ class Node:
         return len(self._children)
 
     @property
-    def root(self) -> Optional['Node']:
+    def root(self) -> Optional['Node[T]']:
         root = None
         parent = self.parent
         while parent:
@@ -61,20 +62,20 @@ class Node:
         return bool(self.parent)
 
     @property
-    def ancestors(self) -> Iterable['Node']:
+    def ancestors(self) -> Iterable['Node[T]']:
         node = self.parent
         while node:
             yield node
             node = node.parent
 
     @property
-    def descendants(self) -> Iterable['Node']:
+    def descendants(self) -> Iterable['Node[T]']:
         for child in self.children:
             yield child
             yield from child.descendants
 
     @property
-    def previousSibling(self) -> Optional['Node']:
+    def previousSibling(self) -> Optional['Node[T]']:
         if not self.parent:
             return None
         siblings = self.parent.children
@@ -82,7 +83,7 @@ class Node:
         return siblings[i - 1] if i > 0 else None
 
     @property
-    def nextSibling(self) -> Optional['Node']:
+    def nextSibling(self) -> Optional['Node[T]']:
         if not self.parent:
             return None
         siblings = self.parent.children
@@ -90,7 +91,7 @@ class Node:
         return siblings[i + 1] if i + 1 < len(siblings) else None
 
     @property
-    def previousSiblings(self) -> Iterable['Node']:
+    def previousSiblings(self) -> Iterable['Node[T]']:
         if not self.parent:
             return ()
         children = self.parent.children
@@ -99,7 +100,7 @@ class Node:
         return reversed(children[0:i])
 
     @property
-    def nextSiblings(self) -> Iterable['Node']:
+    def nextSiblings(self) -> Iterable['Node[T]']:
         if not self.parent:
             return ()
         children = self.parent.children
@@ -108,11 +109,11 @@ class Node:
         return children[i:]
 
     @property
-    def firstChild(self) -> Optional['Node']:
+    def firstChild(self) -> Optional['Node[T]']:
         return self._children[0] if self._children else None
 
     @property
-    def lastChild(self) -> Optional['Node']:
+    def lastChild(self) -> Optional['Node[T]']:
         return self._children[-1] if self._children else None
 
     @property
@@ -134,6 +135,9 @@ class Node:
         self.attributes[name] = value
         return self
 
+    def getAttribute(self, name: str):
+        return self.attributes.get(name)
+
     def removeAttribute(self, name):
         del self.attributes[name]
         return self
@@ -146,8 +150,8 @@ class Node:
         """Does a deep copy of this node. If a depth is given, it will
         stop at the given depth."""
         node = Node(self.name)
-        self.data = pycopy(self.data)
-        self.attributes = pycopy(self.attributes)
+        self.attributes = type(self.attributes)((k, v)
+                                                for k, v in self.attributes.items())
         if depth != 0:
             for child in self._children:
                 node.append(child.copy(depth - 1))
@@ -159,12 +163,12 @@ class Node:
         else:
             return self._children.index(node)
 
-    def detach(self) -> 'Node':
+    def detach(self) -> 'Node[T]':
         if self.parent:
             self.parent.remove(self)
         return self
 
-    def wrap(self, node: "Node") -> 'Node':
+    def wrap(self, node: "Node") -> 'Node[T]':
         """Moves the current node into the given `node`, attaching the given
         `node` where the current node was in the parent."""
         parent = self.parent
@@ -174,13 +178,13 @@ class Node:
         node.append(self)
         return self
 
-    def absorb(self, node: "Node") -> 'Node':
+    def absorb(self, node: "Node") -> 'Node[T]':
         """Detaches the given node and merges in its children and attributes."""
         node.detach()
         self.merge(node)
         return self
 
-    def merge(self, node: 'Node', attributes=True, replace=False) -> 'Node':
+    def merge(self, node: 'Node[T]', attributes=True, replace=False) -> 'Node[T]':
         children = [_ for _ in node._children]
         if attributes:
             # TODO: We could do a smarter merge
@@ -191,7 +195,7 @@ class Node:
             self.add(c.detach())
         return self
 
-    def add(self, node: 'Node') -> 'Node':
+    def add(self, node: 'Node[T]') -> 'Node[T]':
         assert isinstance(node, Node), f"Expected a Node, got: {node}"
         assert not node.parent, "Cannot add node to {0}, it already has a parent: {1}".format(
             self, node)
@@ -199,7 +203,7 @@ class Node:
         self._children.append(node)
         return node
 
-    def set(self, index, node: 'Node') -> 'Node':
+    def set(self, index, node: 'Node[T]') -> 'Node[T]':
         assert isinstance(node, Node), f"Expected a Node, got: {node}"
         assert not node.parent, "Cannot set node to {0}, it already has a parent: {1}".format(
             self, node)
@@ -215,7 +219,7 @@ class Node:
             node.parent = self
             return node
 
-    def setChildren(self, children: Iterable['Node']):
+    def setChildren(self, children: Iterable['Node[T]']) -> 'Node[T]':
         if self.children:
             for child in self.children:
                 child.parent = None
@@ -224,22 +228,22 @@ class Node:
             self.append(child)
         return self
 
-    def append(self, node: 'Node') -> 'Node':
+    def append(self, node: 'Node[T]') -> 'Node[T]':
         return self.add(node)
 
-    def extend(self, nodes: list['Node']) -> 'Node':
+    def extend(self, nodes: list['Node[T]']) -> 'Node[T]':
         for node in nodes:
             self.add(node.detach())
         return self
 
-    def remove(self, node: 'Node') -> 'Node':
+    def remove(self, node: 'Node[T]') -> 'Node[T]':
         assert node.parent is self, "Cannot remove node from {0}, it has a different parent: {1}".format(
             self, node.parent)
         node.parent = None
         self._children.remove(node)
         return node
 
-    def insert(self, index: int, node: 'Node') -> 'Node':
+    def insert(self, index: int, node: 'Node[T]') -> 'Node[T]':
         index = index if index >= 0 else len(self._children) + index
         assert index >= 0 and index <= len(
             self._children), "Index out of bounds {0} in: {1}".format(index, self)
@@ -252,7 +256,7 @@ class Node:
             self._children.insert(index, node)
         return node
 
-    def replaceWith(self, nodes: Union['Node', list['Node']]):
+    def replaceWith(self, nodes: Union['Node[T]', list['Node[T]']]):
         nodes = [nodes] if isinstance(nodes, Node) else nodes
         index = self.index()
         if index is None:
@@ -266,17 +270,17 @@ class Node:
         self.detach()
         return self
 
-    def walk(self, functor=None, processor=None) -> list[Any]:
-        p = processor or (lambda _: _)
-        return list(p(_) for _ in self.iterWalk(functor))
+    def walk(self, functor=None, processor=None, filter=None) -> list[Any]:
+        return list(self.iterWalk(functor=functor, processor=processor, filter=filter))
 
-    def iterWalk(self, functor=None):
+    def iterWalk(self, functor=None, processor=None, filter=None) -> Iterable[Any]:
         if (not functor) or functor(self) is not False:
-            yield self
+            if (not filter) or filter(self):
+                yield processor(self) if processor else self
             for c in self._children:
-                yield from c.iterWalk(functor)
+                yield from c.iterWalk(functor, processor, filter)
 
-    def asDict(self):
+    def asdict(self):
         res: dict[str, Any] = {"id": self.id}
         if self.name:
             res["name"] = self.name
@@ -287,12 +291,13 @@ class Node:
         if self.metadata:
             res["metadata"] = self.metadata
         if self._children:
-            res["children"] = [_.asDict() for _ in self._children]
+            res["children"] = [_.asdict() for _ in self._children]
         return res
 
-    def iterXML(self) -> Iterable[str]:
+    def iterXML(self, level=0) -> Iterable[str]:
         stop = False
-        if self.name == "text":
+        indent = "  " * level
+        if self.name == "#text":
             if "value" in self.attributes and len(self.attributes) == 1:
                 yield str(self.attributes["value"])
                 stop = True
@@ -301,15 +306,15 @@ class Node:
                 stop = True
         if not stop:
             attributes = " ".join(
-                f"{k}={json.dumps(v) if isinstance(v,str) else json.dumps(json.dumps(v))}" for k, v in self.attributes.items())
+                f"{k}={json.dumps(v) if isinstance(v,str) else json.dumps(repr(v))}" for k, v in self.attributes.items())
             prefix = f"{self.name}{' ' if attributes else ''}{attributes}"
             if not self._children:
-                yield f"<{prefix} />"
+                yield f"{indent}<{prefix} />\n"
             else:
-                yield f"<{prefix}>"
+                yield f"{indent}<{prefix}>\n"
                 for child in self._children:
-                    yield from child.iterXML()
-                yield f"</{self.name}>"
+                    yield from child.iterXML(level+1)
+                yield f"{indent}</{self.name}>\n"
 
     def toXML(self) -> str:
         return "".join(self.iterXML())
@@ -317,12 +322,12 @@ class Node:
     def iterTDoc(self, level=0) -> Iterable[str]:
         attributes = " ".join(f"{k}={repr(v)}" for k,
                               v in self.attributes.items())
-        yield f"{self.name or 'â'} {attributes}"
+        yield f"{self.name or '──'} {attributes}"
         last_i = len(self.children) - 1
         for i, child in enumerate(self.children):
             for j, line in enumerate(child.iterTDoc(level + 1)):
-                leader = ("ââ " if i == last_i else "ââ ") if j == 0 else (
-                    "   " if i == last_i else "â  ")
+                leader = ("└ " if i == last_i else "├ ") if j == 0 else (
+                    "   " if i == last_i else "│  ")
                 yield leader + line
 
     def toTDoc(self) -> str:
@@ -338,7 +343,7 @@ class Node:
             return self._children[index]
 
     # FIXME: Does not seem to work, should check
-    def __contains__(self, value: Union[int, str, 'Node']) -> bool:
+    def __contains__(self, value: Union[int, str, 'Node[T]']) -> bool:
         if isinstance(value, int):
             return value >= 0 and value < self.count
         elif isinstance(value, Node):
@@ -350,6 +355,10 @@ class Node:
 
     def __repr__(self):
         return f"<Node:{self.name} {' '.join(str(k)+'='+repr(v) for k,v in self.attributes.items())}{' …' + str(len(self.children)) if self._children else ''}>"
+
+
+def node(name: str, *children: Node, **attributes: Any):
+    return Node(name, **attributes).setChildren(children)
 
 
 def toASCIILines(node: Node, prefix="") -> Iterable[str]:
@@ -379,8 +388,8 @@ def toSExprLines(node: Node, prefix="", suffix="") -> Iterable[str]:
 def toGraphvizLines(cls, root: Node) -> Iterable[str]:
     yield "digraph {"
     for node in root.walk():
-        if isinstance(node, NamedNode):
-            yield f"  {node.id}[label={json.dumps(node.path or ':root')}];"
+        if node.name:
+            yield f"  {node.id}[label={node.name}];"
         else:
             yield f"  {node.id};"
         for child in node.children:
@@ -407,4 +416,5 @@ def toSExpr(node: Node, numbers=False) -> str:
 
 def toGraphviz(node: Node, numbers=False) -> str:
     return toText(toGraphvizLines(node), numbers=numbers)
+
 # EOF

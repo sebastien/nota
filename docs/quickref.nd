@@ -1,0 +1,26 @@
+Define #tags to easily find content #quickref.
+
+Reference _terms_ and define them like so:
+
+_quickref_::
+    Outlines how to use nota's syntax and microformats.
+    Definitions can contain rich content as well, such as URL, see
+    <https://github.com/sebastien/nota/blob/main/docs/quickref.md>
+
+Dates are like `2021-10-21`, times are `09:58:00`, or `9AM` datetimes
+are dates and times with a `T` like `2021-10-12T09:58:00`.
+
+
+## Microformats
+
+  - *hashtag*: A `#hashtag` to reference a topic
+  - *reference*: An `[internal reference]`
+  - *terms*: Terms `_term_`
+  - *Date*: `2021-09-09`
+  - *Time*: `10:00:20`
+  - *Datetime*: `2021-09-09T10:00:20`
+  - *URL*: `<http://github.com/sebastien/nota>`
+  - *Field*: `-- field=value`, used to capture/define metadata for the
+    current block or document.
+  - *Block*: `-- name:type field=value`, used to break down the document
+    in smaller blocks.

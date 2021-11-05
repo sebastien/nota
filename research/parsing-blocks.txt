@@ -1,0 +1,23 @@
+
+# --
+# Text
+
+# Comment
+
+# --
+# Symbol: A
+class A:
+
+	# --
+	# Symbol: A.A
+	A = 20
+
+	# --
+	# Symbol: A.method_a
+	def method_a( self, p0, p1 ):
+		v0 = 1
+		# --
+		# Test
+		v0 = 2
+
+# EOF
