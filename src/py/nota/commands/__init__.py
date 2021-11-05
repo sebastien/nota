@@ -11,7 +11,7 @@ from ..store import Store
 from ..utils import indexing
 
 ENCODING = sys.stdout.encoding
-RE_INDEX = re.compile(r"\d+")
+RE_NUMBER = re.compile(r"\d+")
 
 # --
 # # Commands
@@ -108,7 +108,7 @@ class Context:
         notelist = list(self.do.listNotes())
         match = None
         for q in query:
-            if isinstance(q, int) or RE_INDEX.match(q):
+            if isinstance(q, int) or RE_NUMBER.match(q):
                 indice = max(1, int(q)) - 1
                 if indice >= 0 and indice < len(notelist):
                     return Match(notelist[indice])
@@ -142,6 +142,14 @@ RE_INT = re.compile("^\d+$")
 def create(context, name: str):
     """Creates a new note with the given name, which can contains '/'
     as path separator."""
+    if RE_NUMBER.match(name):
+        return context.error(f"Notes names cannot be a number: {name}")
+    elif context.do.hasNote(name):
+        context.info(f"Note {name} already exist, editing")
+        return edit(context, name)
+    else:
+        return context.edit(name)
+
 
 # TODO:  Edit should search if not alreayd available
 # TODO: Create should craeate something new

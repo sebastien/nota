@@ -11,11 +11,11 @@ class Operations:
     def __init__(self, store: Store):
         self.store = store
 
-    def editNote(self, path: str) -> EditSession:
+    def editNote(self, path: NotePath) -> EditSession:
         return self.store.editNote(path)
 
-    def hasNote(self, path: str) -> bool:
-        pass
+    def hasNote(self, path: NotePath) -> bool:
+        return self.store.hasNote(path)
 
     def readNote(self, note: Note) -> str:
         return self.store.readNote(note)
