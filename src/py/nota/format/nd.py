@@ -116,19 +116,6 @@ STRUCTURE = {
 }
 
 
-def indentation(line: str, tabsize=4) -> int:
-    """Returns the indentation level of the given `line`, expanding tabs
-    to spaces."""
-    indent = 0
-    for c in line:
-        if c == ' ':
-            indent += 1
-        elif c == '\t':
-            indent += tabsize - (indent % tabsize)
-        else:
-            break
-    return indent
-
 
 @dataclass
 class Block:
@@ -155,14 +142,14 @@ def structure(text: str, patterns: dict[str, parsing.Pattern] = STRUCTURE) -> li
         if not before:
             pass
         elif not block:
-            blocks.append(Block(None, indentation(before), [before]))
+            blocks.append(Block(None, parsing.indentation(before), [before]))
         else:
             if block.indentation == -1:
-                block.indentation = indentation(before)
+                block.indentation = parsing.indentation(before)
             block.content.append(before)
         try:
             content = delimiter.match.group("content")
-            block = Block(name, indentation(content), [content])
+            block = Block(name, parsing.indentation(content), [content])
         except IndexError:
             block = Block(name, -1, [])
         blocks.append(block)
@@ -187,8 +174,8 @@ def tree(blocks: list[Block]) -> Node:
     return root
 
 
-def parse(text: str) -> Node:
-    return tree(structure(text))
+def parse(text: str,patterns=STRUCTURE) -> Node:
+    return tree(structure(text, patterns))
 
 
 # with open("/home/sebastien/.nota/tools/git.nd", "rt") as f:

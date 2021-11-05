@@ -1,6 +1,12 @@
 from typing import NamedTuple, Optional, Iterable, Hashable
 import re
 
+# --
+# ## Ad-hoc Parsing
+#
+# This module defines primitive for ad-hoc, grammar-less, "cherry picking"
+# parsing of text. Patterns match fragments looking aheadin the text
+# stream.
 
 class Fragment:
 
@@ -47,6 +53,19 @@ class Pattern:
             return Match(self.name, self.type, Fragment(fragment.source, o + match.start(0), o + match.end(0)), match)
         else:
             return None
+
+def indentation(line: str, tabsize=4) -> int:
+    """Returns the indentation level of the given `line`, expanding tabs
+    to spaces."""
+    indent = 0
+    for c in line:
+        if c == ' ':
+            indent += 1
+        elif c == '\t':
+            indent += tabsize - (indent % tabsize)
+        else:
+            break
+    return indent
 
 
 def parse(patterns: dict[Hashable, Pattern], text: str, lookahead: int = 80*20) -> Iterable[tuple[str, Match]]:
