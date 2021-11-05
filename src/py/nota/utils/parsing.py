@@ -81,6 +81,10 @@ def parse(patterns: dict[Hashable, Pattern], text: str, lookahead: int = 80*20) 
             match_end = max(match.fragment.end, match_end)
             if match:
                 yield k, match
+                # NOTE: This is where we're not being efficient, we already
+                # have matches for the other patterns (k), but we're going
+                # to retry them all.
+                break
         fragment = fragment.to(
             match_end) if match_end else fragment.shift(lookahead)
 
