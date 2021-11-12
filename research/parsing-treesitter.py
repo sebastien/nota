@@ -213,8 +213,9 @@ class StructureProcessor(Processor):
 
 parser = Parser()
 parser.set_language(PY_LANGUAGE)
-with open(Path(__file__).parent / "python-embedded.py", "rb") as f:
+with open(Path(__file__), "rb") as f:
     text = f.read()
     tree = parser.parse(text)
 
 StructureProcessor().process(tree, text)
+# EOF
