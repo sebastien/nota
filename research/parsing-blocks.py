@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 from nota.utils.parsing import Fragment, Pattern, parse, indentation
-from nota.format.nd import structure, tree
+from nota.format.nd import structure
 from nota.utils.tree import Node
-from typing import Optional
 from pathlib import Path
 import json
 import re
@@ -26,7 +25,7 @@ patterns = {
         "def": Pattern(
             re.compile(r"(?P<indent>[ \t]*)(?P<type>class|def)[ ]+(?P<name>[\w\d_]+)")),
         "struct": Pattern(
-            re.compile(r"(?P<indent>[ \t]*)(?P<type>(async[ ]+)for|while|if|elif|else)(?P<expr>[ ][.*]+)?:[ \t]*\n")),
+            re.compile(r"(?P<indent>[ \t]*)(?P<type>(async[ ]+)?(for|while|if|elif|else))(?P<expr>[ ].*)?:[ \t]*\n", re.MULTILINE)),
         "assign": Pattern(
             re.compile(r"(?P<indent>[ \t]*)(?P<name>\w[^=\n]*)[ ]+=[^\n]+")),
         # "comment": Pattern(
@@ -41,9 +40,36 @@ patterns = {
 
 SOURCE = Path(__file__)
 text = open(SOURCE).read()
+text = """
+pouet = 10
+if a == 10:
+    b = 20
+elif a == 30:
+    b = 40
+else:
+    b = 50
+"""
 root = Node("doc", dict(depth=0))
 node = root
 offset = 0
+def node_find_parent( node:Node, source:str, start:int, end:int ) -> Node:
+    text = source[start:end]
+    indent = indentation(text) + 1
+    print ("INDENT", indent, ":", repr(text), ":", node.getAttribute("depth"))
+    while node.parent and (node.getAttribute("depth") >= indent or node.name == "cell"):
+        print ("  shift", node.getAttribute("depth"))
+        node = node.parent
+    print ("   ==", node.getAttribute("depth"))
+    return node
+
+
+def node_append_text( node:Node, source:str, start:int, end:int ) -> Node:
+    text = source[start:end]
+    indent = indentation(text) + 1
+    code = Node("code", dict(depth=indent))
+    code.append(Node("#text", dict(start=start, end=end, value=text)))
+    return node_find_parent(node, source, start, end).append(code)
+
 for name, match  in parse(patterns, text):
     indent = indentation(match.match.group("indent")) + 1
     while node.getAttribute("depth") >= indent or node.name == "cell":
@@ -56,21 +82,28 @@ for name, match  in parse(patterns, text):
     if offset < match.fragment.start:
         s = offset
         offset = e = match.fragment.start
-        div = node.append(Node("code", dict(depth=node.getAttribute("depth") + 1)))
-        div.append(Node("#text", dict(start=s, end=e, value=text[s:e])))
+        #div = Node("code", dict(depth=node.getAttribute("depth") + 1))
+        # div.append(Node("#text", dict(start=s, end=e, value=text[s:e])))
+        #node.append(div)
+        node_append_text(node, text, s, e)
+
+    # We create the new node with the given matched name
     cur = Node(name, dict(depth=indent))
+    # We add it to the current node (scope)
     node.add(cur)
     node = cur
     if name == "cell":
         s = offset
         offset = e = match.fragment.end
-        node.append(Node("#text", dict(start=s, end=e, value=text[s:e])))
+        node_append_text(node, text, s, e)
     elif name == "struct":
         offset = match.fragment.start
     else:
         node.setAttribute("symbol", match.match.group("name"))
         offset = match.fragment.start
-node.append(Node("#text", dict(value=text[offset:])))
+# We append the rest of the text
+# TODO: We should find the proper parent based on the indentation
+node_append_text(node, text, offset, len(text))
 
 # --
 # ## HTML Conversion
@@ -98,11 +131,14 @@ def to_html( node:Node ) -> Node:
         res = Node("div", {"class":f"block {node.name}"})
         sym = node.getAttribute("symbol")
         if sym:
-            res.add(Node("div", {"class":"symbol"}).add(Node("#text", dict(value=f"sym:{sym}"))))
+            div = Node("div", {"class":"symbol"}).add(Node("#text", dict(value=f"sym:{sym}")))
+            res.add(div)
         for child in node.children:
             n = to_html(child)
             if n:
                 res.append(n)
+        if not res.children:
+            res.add(Node("#text",dict(value="")))
         if  node.name == "doc":
             return Node("html").add(
                 Node("head").add(
@@ -119,6 +155,7 @@ with open("pouet.json", "wt") as f:
     f.write(json.dumps(root.asDict()))
 
 print(root.toTDoc())
+print("*" * 80)
 
 
 
