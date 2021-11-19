@@ -3,7 +3,7 @@ from nota.utils.parsing import Fragment, Pattern, parse, indentation
 from nota.format.nd import structure
 from nota.utils.tree import Node
 from pathlib import Path
-from typing import Iterable, Optional, NamedTuple
+from typing import Iterable, Optional, NamedTuple, Any
 import re
 import json
 
@@ -44,9 +44,10 @@ class Chunk(NamedTuple):
     name:str
     indent:int
     text:str
+    attributes:dict
 
-def make_chunk( name:str, text:str, indent:Optional[int]=None ) -> Chunk:
-    return Chunk(name, indentation(text) if indent is None else indent, text)
+def make_chunk( name:str, text:str, indent:Optional[int]=None, attributes:Optional[dict[str,Any]]=None) -> Chunk:
+    return Chunk(name, indentation(text) if indent is None else indent, text, attributes or {})
 
 def parse_chunks( text:str ) -> Iterable[Chunk]:
     offset = 0
@@ -55,7 +56,24 @@ def parse_chunks( text:str ) -> Iterable[Chunk]:
         # NOTE: assignments and structures have no content, they're just markers, so
         # their end is going to be the same as their start.
         end = match.fragment.end if name in ("cell","struct") else match.fragment.start
-        yield make_chunk(name, text[match.fragment.start:end], indent=indentation(text[match.fragment.start:match.fragment.end]))
+        attributes = {}
+        if name == "def":
+            attributes = {
+                "name":match.match.group("name"),
+                "type":match.match.group("type")
+            }
+        elif name == "struct":
+            attributes = {
+                "expr":match.match.group("expr"),
+                "type":match.match.group("type")
+            }
+        elif name == "assign":
+            attributes = {
+                "name":match.match.group("name"),
+            }
+
+        print ("ATTRXX", match.name, ":", attributes)
+        yield make_chunk(name, text[match.fragment.start:end], indent=indentation(text[match.fragment.start:match.fragment.end]), attributes=attributes)
         offset = end
     yield make_chunk("#text", text[offset:])
 
@@ -69,13 +87,17 @@ def text_node(text:str):
 
 RE_EMPTY = re.compile(r"^\s*$")
 
+def merge(a:dict,b:dict) -> dict:
+    a.update(b or {})
+    return a
+
 def make_tree( chunks:Iterable[Chunk] ) -> Node:
     root = node = Node("doc", dict(depth=-1))
     for chunk in chunks:
         if chunk.name == "#text":
             node_parent(node, indentation(chunk.text) + 1).append(text_node(chunk.text))
         else:
-            new = Node(chunk.name, dict(depth=chunk.indent))
+            new = Node(chunk.name, merge(dict(depth=chunk.indent), chunk.attributes))
             if chunk.text:
                 new.append(Node("#text", dict(value=chunk.text)))
             node_parent(node, chunk.indent).append(new)
@@ -85,7 +107,7 @@ def make_tree( chunks:Iterable[Chunk] ) -> Node:
 # --
 SOURCE = Path(__file__)
 text = open(SOURCE).read()
-XXXtext = """
+text = """
 def parse_chunks( text:str ) -> Iterable[Chunk]:
     offset = 0
     for name, match  in parse(patterns, text):
@@ -111,6 +133,11 @@ border-left: 10px solid #E0E0E0;
 }
 
 
+.block--cell {
+    font-family: sans-serif;
+    background: #FFFFE0;
+}
+
 .tag {
 display:block;
 background: yellow;
@@ -131,7 +158,7 @@ def to_html( node:Node ) -> Node:
     else:
         res = Node("div", {"class":f"block block--{node.name}"}).add(
             Node("span", {"class":f"tag tag--{node.name}"}).add(
-                text_node(node.name)
+                text_node(node.name + " " + str(node.attributes))
             )
         )
 

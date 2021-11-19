@@ -1,0 +1,24 @@
+# Nota/Coda parsing
+
+
+## Coda Parsing
+
+Code maps to a tree, and getting the structure of that tree typically depends
+on:
+
+- Explicit start and end delimiters pairs (`{`+ ̀}`, `#`+`\n`) or single delimiters (`"`, `'`)
+- Indentation of the current line (eg. Python)
+
+The structure can be identified by marking start and end markers in a document
+to as belonging to the same block
+
+	a = "This is a string which is parsed as a block"
+	    ^ Start of block 0                          ^ End of block 0
+
+In addition to that, we want to mark some parts of the text as defining something
+
+	a = "This is a string which is parsed as a block"
+	^ Definition of symbol "a"
+
+In absence of a formal grammar, the easiest way to parse all of that is to generate
+a sequence of markers that can then be folded in to a tree.
