@@ -3,8 +3,9 @@ from nota.utils.parsing import Fragment, Pattern, parse, indentation
 from nota.format.nd import structure
 from nota.utils.tree import Node
 from pathlib import Path
-import json
+from typing import Iterable, Optional, NamedTuple
 import re
+import json
 
 # --
 # # Block Parsing Example
@@ -38,97 +39,102 @@ patterns = {
 # --
 # We create the document tree by parsing the patterns.
 
-SOURCE = Path(__file__)
-text = open(SOURCE).read()
-text = """
-pouet = 10
-if a == 10:
-    b = 20
-elif a == 30:
-    b = 40
-else:
-    b = 50
-"""
-root = Node("doc", dict(depth=0))
-node = root
-offset = 0
-def node_find_parent( node:Node, source:str, start:int, end:int ) -> Node:
-    text = source[start:end]
-    indent = indentation(text) + 1
-    print ("INDENT", indent, ":", repr(text), ":", node.getAttribute("depth"))
-    while node.parent and (node.getAttribute("depth") >= indent or node.name == "cell"):
-        print ("  shift", node.getAttribute("depth"))
+
+class Chunk(NamedTuple):
+    name:str
+    indent:int
+    text:str
+
+def make_chunk( name:str, text:str, indent:Optional[int]=None ) -> Chunk:
+    return Chunk(name, indentation(text) if indent is None else indent, text)
+
+def parse_chunks( text:str ) -> Iterable[Chunk]:
+    offset = 0
+    for name, match  in parse(patterns, text):
+        yield make_chunk("#text", text[offset:match.fragment.start])
+        # NOTE: assignments and structures have no content, they're just markers, so
+        # their end is going to be the same as their start.
+        end = match.fragment.end if name in ("cell","struct") else match.fragment.start
+        yield make_chunk(name, text[match.fragment.start:end], indent=indentation(text[match.fragment.start:match.fragment.end]))
+        offset = end
+    yield make_chunk("#text", text[offset:])
+
+def node_parent( node:Node, depth:int ) -> Node:
+    while node and node.parent and (not node.hasAttribute("depth") or node.getAttribute("depth") >= depth):
         node = node.parent
-    print ("   ==", node.getAttribute("depth"))
     return node
 
+def text_node(text:str):
+    return Node("#text" ,dict(value=text))
 
-def node_append_text( node:Node, source:str, start:int, end:int ) -> Node:
-    text = source[start:end]
-    indent = indentation(text) + 1
-    code = Node("code", dict(depth=indent))
-    code.append(Node("#text", dict(start=start, end=end, value=text)))
-    return node_find_parent(node, source, start, end).append(code)
+RE_EMPTY = re.compile(r"^\s*$")
 
-for name, match  in parse(patterns, text):
-    indent = indentation(match.match.group("indent")) + 1
-    while node.getAttribute("depth") >= indent or node.name == "cell":
-        node = node.parent
-    # if name == "comment":
-    #     continue
-    # elif name == "line":
-    #     continue
-    # Adds the text before
-    if offset < match.fragment.start:
-        s = offset
-        offset = e = match.fragment.start
-        #div = Node("code", dict(depth=node.getAttribute("depth") + 1))
-        # div.append(Node("#text", dict(start=s, end=e, value=text[s:e])))
-        #node.append(div)
-        node_append_text(node, text, s, e)
+def make_tree( chunks:Iterable[Chunk] ) -> Node:
+    root = node = Node("doc", dict(depth=-1))
+    for chunk in chunks:
+        if chunk.name == "#text":
+            node_parent(node, indentation(chunk.text) + 1).append(text_node(chunk.text))
+        else:
+            new = Node(chunk.name, dict(depth=chunk.indent))
+            if chunk.text:
+                new.append(Node("#text", dict(value=chunk.text)))
+            node_parent(node, chunk.indent).append(new)
+            node = new
+    return root
 
-    # We create the new node with the given matched name
-    cur = Node(name, dict(depth=indent))
-    # We add it to the current node (scope)
-    node.add(cur)
-    node = cur
-    if name == "cell":
-        s = offset
-        offset = e = match.fragment.end
-        node_append_text(node, text, s, e)
-    elif name == "struct":
-        offset = match.fragment.start
-    else:
-        node.setAttribute("symbol", match.match.group("name"))
-        offset = match.fragment.start
-# We append the rest of the text
-# TODO: We should find the proper parent based on the indentation
-node_append_text(node, text, offset, len(text))
+# --
+SOURCE = Path(__file__)
+text = open(SOURCE).read()
+XXXtext = """
+def parse_chunks( text:str ) -> Iterable[Chunk]:
+    offset = 0
+    for name, match  in parse(patterns, text):
+        yield make_chunk("#text", text[offset:match.fragment.start])
+        end = match.fragment.end if name in ("cell",) else match.fragment.start
+        yield make_chunk(name, text[match.fragment.start:end], indent=indentation(text[match.fragment.start:match.fragment.end]))
+"""
+for chunk in enumerate(parse_chunks(text)):
+    print(chunk)
+print("-" * 50)
+doc = make_tree(parse_chunks(text))
+
 
 # --
 # ## HTML Conversion
 STYLE = """
 
 
-pre {
-border: 1px solid #E0E0E0;
-}
-
-.block {
+.block--def, .block--struct {
 margin: 5px;
+border: 1px solid #F0F0F0;
 border-left: 10px solid #E0E0E0;
 }
+
+
+.tag {
+display:block;
+background: yellow;
+font-size: 9px;
+font-family: monospace;
+
+}
+
 
 .cell {
 background-color: yellow;
 }
-
 """
+
 def to_html( node:Node ) -> Node:
     if node.name == "#text":
         return Node("pre").add(Node("#text", dict(value=node.getAttribute("value"))))
     else:
-        res = Node("div", {"class":f"block {node.name}"})
+        res = Node("div", {"class":f"block block--{node.name}"}).add(
+            Node("span", {"class":f"tag tag--{node.name}"}).add(
+                text_node(node.name)
+            )
+        )
+
         sym = node.getAttribute("symbol")
         if sym:
             div = Node("div", {"class":"symbol"}).add(Node("#text", dict(value=f"sym:{sym}")))
@@ -150,11 +156,14 @@ def to_html( node:Node ) -> Node:
             return res
 
 with open("pouet.html", "wt") as f:
-    f.write(to_html(root).toHTML())
+    f.write(to_html(doc).toHTML())
 with open("pouet.json", "wt") as f:
-    f.write(json.dumps(root.asDict()))
+    f.write(json.dumps(doc.asDict()))
 
-print(root.toTDoc())
+print("-" * 80)
+print(doc.toTDoc())
+print("-" * 80)
+print(to_html(doc).toTDoc())
 print("*" * 80)
 
 
