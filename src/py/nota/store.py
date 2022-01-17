@@ -1,13 +1,11 @@
 from pathlib import Path
-from typing import Optional, Iterable, Callable, ContextManager
+from typing import Optional, Iterable, Callable
+from .operations import Operator, NotePath, Session
 import stat
 import os
 import shutil
 from glob import glob
 
-
-class AbstractStore:
-    pass
 
 
 NOTE_TEMPLATE = """
@@ -47,7 +45,7 @@ and  you can interleave with comments and description
 """
 
 
-class EditSession(ContextManager):
+class EditSession(Session):
 
     def __init__(self, path: Path):
         self.path = path
@@ -62,7 +60,7 @@ class EditSession(ContextManager):
         pass
 
 
-class Store(AbstractStore):
+class Store(Operator):
 
     EXTENSION = ".nd"
 
@@ -82,7 +80,7 @@ class Store(AbstractStore):
     def readNote(self, note: str) -> str:
         return self.notePath(note).read_text()
 
-    def listNotes(self) -> Iterable[str]:
+    def listNotes(self, path:Optional[str]=None) -> Iterable[str]:
         n = 0 - len(self.EXTENSION)
         return (str(_.relative_to(self.base))[:n] for _ in self.files.walk(lambda _: _.suffix == self.EXTENSION))
 
@@ -90,6 +88,11 @@ class Store(AbstractStore):
         return (self.base / f"{note}{self.EXTENSION}").absolute()
 
 
+# --
+# ## File store
+#
+# The `Files` class wraps functions that operate on a root/base `path`, which
+# is used for storing notes.
 class Files:
     """A simple wrapper around the filesystem to easily store and
     query files."""

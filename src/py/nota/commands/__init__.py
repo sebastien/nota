@@ -129,6 +129,9 @@ class Context:
         else:
             return nameish
 
+#     def getNoteMetadata( self, name:str ): NoteMetadata
+#         pass
+
     def displayEnumeratedList(self, items: Iterable[str]):
         if not items:
             self.err(f"No item found")
@@ -185,6 +188,7 @@ def edit(context, name: list[str]):
 @cli.command("QUERY*", alias="l|ls")
 def _list(context, query: Optional[str] = None):
     """Lists the available notes"""
+    # TODO: Display note udpated
     context.displayEnumeratedList(context.findNodes(query).all)
 
 

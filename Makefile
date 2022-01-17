@@ -8,3 +8,6 @@ try-install:
 try-uninstall:
 	unlink $(PATH_LOCAL_BIN)/nota; true
 	if [ -s "$(PATH_LOCAL_PY)" ]; then unlink src/py/nota "$(PATH_LOCAL_PY)"/nota; true; fi
+
+
+# EOF
