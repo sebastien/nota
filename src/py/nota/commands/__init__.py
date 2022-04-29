@@ -8,8 +8,7 @@ from ..model import NotePath, Reference
 from ..format import nd
 from difflib import get_close_matches
 from ..utils import cli
-from ..operations import Operations
-from ..store import Store
+from ..operations import Operations, StoreOperator
 from ..utils import indexing
 
 ENCODING = sys.stdout.encoding
@@ -22,51 +21,57 @@ RE_NUMBER = re.compile(r"\d+")
 # with its documentation and command line arguments.
 
 
-def key(text:str) -> str:
+def key(text: str) -> str:
     return text.lower().strip()
 
+
 class Color:
-    RESET        = '[0m[0m'
-    LIGHT_GRAY   = '[0m[00;37m'
-    DARK_GRAY    = '[0m[01;30m'
-    BLACK        = '[0m[00;30m'
-    BLACK_BOLD   = '[0m[01;30m'
-    RED          = '[0m[00;31m'
-    RED_BOLD     = '[0m[01;31m'
-    GREEN        = '[0m[00;32m'
-    GREEN_BOLD   = '[0m[01;32m'
-    BLUE         = '[0m[00;34m'
-    BLUE_BOLD    = '[0m[01;34m'
-    MAGENTA      = '[0m[00;35m'
-    MAGENTA_BOLD = '[0m[01;35m'
-    CYAN         = '[0m[00;35m'
-    CYAN_BOLD    = '[0m[01;35m'
-    YELLOW       = '[0m[01;33m'
-    YELLOW_BOLD  = '[0m[01;33m'
-    WHITE        = '[0m[00;37m'
-    WHITE_BOLD   = '[0m[01;37m'
+    RESET = "[0m[0m"
+    LIGHT_GRAY = "[0m[00;37m"
+    DARK_GRAY = "[0m[01;30m"
+    BLACK = "[0m[00;30m"
+    BLACK_BOLD = "[0m[01;30m"
+    RED = "[0m[00;31m"
+    RED_BOLD = "[0m[01;31m"
+    GREEN = "[0m[00;32m"
+    GREEN_BOLD = "[0m[01;32m"
+    BLUE = "[0m[00;34m"
+    BLUE_BOLD = "[0m[01;34m"
+    MAGENTA = "[0m[00;35m"
+    MAGENTA_BOLD = "[0m[01;35m"
+    CYAN = "[0m[00;35m"
+    CYAN_BOLD = "[0m[01;35m"
+    YELLOW = "[0m[01;33m"
+    YELLOW_BOLD = "[0m[01;33m"
+    WHITE = "[0m[00;37m"
+    WHITE_BOLD = "[0m[01;37m"
+
 
 @dataclass
 class Match:
-    exact:Optional[str]
-    like:list[str] = field(default_factory=list)
-    subset:list[str] = field(default_factory=list)
-    approximate:list[str] = field(default_factory=list)
+    exact: Optional[str]
+    like: list[str] = field(default_factory=list)
+    subset: list[str] = field(default_factory=list)
+    approximate: list[str] = field(default_factory=list)
 
     @property
-    def head( self ) -> Optional[str]:
+    def head(self) -> Optional[str]:
         l = self.all
         return l[0] if l else None
 
     @property
-    def all( self ) -> list[str]:
-        return ([self.exact] if self.exact else []) + self.like + self.subset + self.approximate
+    def all(self) -> list[str]:
+        return (
+            ([self.exact] if self.exact else [])
+            + self.like
+            + self.subset
+            + self.approximate
+        )
 
 
 class Context:
-
     def __init__(self):
-        self.do = Operations(Store())
+        self.do = Operations(StoreOperator())
         self.editor = os.environ["EDITOR"] if "EDITOR" in os.environ else "vi"
 
     def edit(self, path: str):
@@ -90,7 +95,7 @@ class Context:
         sys.stdout.write("\n")
         sys.stdout.flush()
 
-    def matchNotesWithName(self, name: str, notes:list[str]) -> Match:
+    def matchNotesWithName(self, name: str, notes: list[str]) -> Match:
         exact = []
         like = []
         subset = []
@@ -104,7 +109,9 @@ class Context:
                 subset.append(n)
             else:
                 rest.append(n)
-        return Match(exact[0] if exact else None, like, subset, get_close_matches(name, rest))
+        return Match(
+            exact[0] if exact else None, like, subset, get_close_matches(name, rest)
+        )
 
     def findNodes(self, query: list[str]) -> Match:
         notelist = list(self.do.listNotes())
@@ -116,7 +123,7 @@ class Context:
                     return Match(notelist[indice])
             match = self.matchNotesWithName(q, notelist)
             notelist = match.all
-        return match or Match(None,approximate=notelist)
+        return match or Match(None, approximate=notelist)
 
     def getNote(self, nameish: str) -> str:
         if RE_INT.match(nameish):
@@ -129,8 +136,8 @@ class Context:
         else:
             return nameish
 
-#     def getNoteMetadata( self, name:str ): NoteMetadata
-#         pass
+    #     def getNoteMetadata( self, name:str ): NoteMetadata
+    #         pass
 
     def displayEnumeratedList(self, items: Iterable[str]):
         if not items:
@@ -161,26 +168,34 @@ def create(context, name: str):
 @cli.command("NAME*", alias="e|ed")
 def edit(context, name: list[str]):
     """Edits the given note"""
-    match  =context.findNodes(name)
+    match = context.findNodes(name)
     query = " ".join(name)
     if not name:
         context.displayEnumeratedList(context.do.listNotes())
     elif match.exact:
         context.edit(match.exact)
     elif len(match.subset) == 1:
-        context.info(f"Picked close match {Color.BLUE}{match.subset[0]}{Color.RESET} for {Color.WHITE_BOLD}{query}{Color.RESET}")
+        context.info(
+            f"Picked close match {Color.BLUE}{match.subset[0]}{Color.RESET} for {Color.WHITE_BOLD}{query}{Color.RESET}"
+        )
         context.edit(match.subset[0])
     elif len(match.like) == 1:
-        context.info(f"Picked close match {Color.BLUE}{match.like[0]}{Color.RESET} for {Color.WHITE_BOLD}{query}{Color.RESET}")
+        context.info(
+            f"Picked close match {Color.BLUE}{match.like[0]}{Color.RESET} for {Color.WHITE_BOLD}{query}{Color.RESET}"
+        )
         context.edit(match.like[0])
     elif not match.all:
-        context.info(f"━━━━ Could not find any match for {Color.RED_BOLD}{query}{Color.RESET}.")
+        context.info(
+            f"━━━━ Could not find any match for {Color.RED_BOLD}{query}{Color.RESET}."
+        )
         context.displayEnumeratedList(context.do.listNotes())
     elif len(match.all) == 1:
         context.info(f"Editing close match '{match.head}' for '{query}'")
         context.edit(match.head)
     else:
-        context.out(f"━━━━ Could not find an exact match for {Color.RED_BOLD}{query}{Color.RESET}, here are close matches:")
+        context.out(
+            f"━━━━ Could not find an exact match for {Color.RED_BOLD}{query}{Color.RESET}, here are close matches:"
+        )
         context.displayEnumeratedList(match.all)
         context.tip(f"Add the item number to the command to edit that note")
 
@@ -209,8 +224,7 @@ def find(context, query: str):
         text = context.do.readNote(note)
         idx = indexing.index(text, note, idx)
     for score, entry in indexing.find(idx, query):
-        context.out(
-            f"[{round(score*100):3d}%] {entry.source} {entry.original}")
+        context.out(f"[{round(score*100):3d}%] {entry.source} {entry.original}")
 
 
 @cli.command("TERM*", alias="i")
@@ -229,12 +243,15 @@ def index(context, query: str):
         print(key, len(refs[key][1]), [_ for _ in refs[key][1]])
 
 
-@ cli.command(alias="q|s", options=[
-    cli.option("-c", "--created", help="Show notes by creation date"),
-    cli.option("-r", "--read", help="Show recently accessed notes"),
-    cli.option("-w", "--write", help="Show recently written/edited notes"),
-    cli.option("-a", "--ascending", help="Shows results in ascending order"),
-])
+@cli.command(
+    alias="q|s",
+    options=[
+        cli.option("-c", "--created", help="Show notes by creation date"),
+        cli.option("-r", "--read", help="Show recently accessed notes"),
+        cli.option("-w", "--write", help="Show recently written/edited notes"),
+        cli.option("-a", "--ascending", help="Shows results in ascending order"),
+    ],
+)
 def recent(context, query):
     """Shows the recently accessed or edited notes."""
     pass

@@ -1,0 +1,1 @@
+- `nota search "git clone branch"` should look for all these keywords in a sentence or paragraph.
