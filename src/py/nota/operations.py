@@ -1,4 +1,4 @@
-from typing import ContextManager, Optional, Generic, TypeVar, Iterable
+from typing import ContextManager, Optional, Generic, TypeVar, Iterable, Iterator
 from pathlib import Path
 from .model import Note, NotePath
 
@@ -116,7 +116,7 @@ class Store:
     def read(self, path: str) -> str:
         raise NotImplemented
 
-    def list(self, path: Optional[str]=None) -> Iterator[str]:
+    def list(self, path: Optional[str] = None) -> Iterator[str]:
         raise NotImplemented
 
 
@@ -124,8 +124,8 @@ class StoreOperator(Operator):
 
     EXTENSION = ".nd"
 
-    def __init__(self, store: Store):
-        self.store = store
+    def __init__(self, store: Optional[Store] = None):
+        self.store: Store = store if store else Store()
 
     def editNote(self, note: str) -> EditSession:
         return EditSession(self.notePath(note))
@@ -140,7 +140,7 @@ class StoreOperator(Operator):
         return self.store.list(self.notePath(path) if path else None)
 
     def notePath(self, note: str) -> str:
-        return f"{note}{self.EXTENSION}")
+        return f"{note}{self.EXTENSION}"
 
 
 # --
