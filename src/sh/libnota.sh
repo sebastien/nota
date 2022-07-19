@@ -28,6 +28,10 @@ function nota-sync {
 	git -C "$NOTA_HOME" push
 }
 
+function nota-list {
+	env -C "$NOTA_HOME" find . -name "*.?d" | cut -b3- | sort
+}
+
 function nota-commit {
 	nota-init
 	local changed=$(git -C "$NOTA_HOME" status --short | cut -b4-)
