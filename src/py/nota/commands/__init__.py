@@ -76,7 +76,8 @@ class Context:
 
     def edit(self, path: str):
         with self.do.editNote(path) as p:
-            subprocess.run([self.editor, str(p)])
+            # nosec - this is fine, as we're calling the user editor and it's
+            subprocess.run([self.editor, str(p)], shell=False)
 
     def err(self, message: str):
         sys.stdout.write("[!] ")

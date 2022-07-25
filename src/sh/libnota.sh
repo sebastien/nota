@@ -35,9 +35,10 @@ function nota-list {
 function nota-commit {
 	nota-init
 	local changed=$(git -C "$NOTA_HOME" status --short | cut -b4-)
-	git -C "$NOTA_HOME" add $changed
-	git -C "$NOTA_HOME" commit -a -m "[Edited] $USER: $changed"
-	git -C "$NOTA_HOME" push
+	if [ ! -z "$changed" ]; then
+		git -C "$NOTA_HOME" add $changed
+		git -C "$NOTA_HOME" commit -a -m "[Edited] $USER: $changed"
+	fi
 }
 
 # EOF

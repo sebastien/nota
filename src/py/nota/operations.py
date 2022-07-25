@@ -1,6 +1,7 @@
-from typing import ContextManager, Optional, Generic, TypeVar, Iterable, Iterator
+from typing import ContextManager, Optional, Generic, TypeVar, Iterable, Iterator, Union
 from pathlib import Path
 from .model import Note, NotePath
+import os
 
 T = TypeVar("T")
 
@@ -53,8 +54,10 @@ class Session(ContextManager, Generic[T]):
 
 
 class EditSession(Session):
-    def __init__(self, path: Path):
-        self.path = path
+    def __init__(self, path: Path, onEnd: Optional[Callback[[Path]], None] = None):
+        assert isinstance(path, Path), f"Expected path, got: {path}"
+        self.path: Path = path
+        self.onEnd: Optional[Callback[[Path], None]] = onEnd
 
     def __enter__(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,14 +113,52 @@ class Operations(Operator):
 
 
 class Store:
+    def edit(self, note: str):
+        return EditSession(self.store.openNote(self.notePath(note)))
+
     def exists(self, path: str) -> bool:
-        raise NotImplemented
+        """Tells if the given path exists"""
+        raise NotImplementedError
 
     def read(self, path: str) -> str:
-        raise NotImplemented
+        """Reads the data from the given path."""
+        raise NotImplementedError
 
     def list(self, path: Optional[str] = None) -> Iterator[str]:
-        raise NotImplemented
+        """Reads the notes at the given path."""
+        raise NotImplementedError
+
+
+class LocalStore(Store):
+    """Implements a local store"""
+
+    def __init__(
+        self,
+        base: Union[Path, str] = Path(
+            os.path.expandvars(os.getenv("NOTA_HOME", "$HOME/.nota"))
+        ),
+    ):
+        self.base: Path = Path(base).absolute()
+        if not self.base.exists():
+            raise RuntimeError(f"Store path does not exsits: {base}")
+
+    def exists(self, path: str) -> bool:
+        """Tells if the given path exists"""
+        return (self.base / path).exists()
+
+    def read(self, path: str) -> Optional[str]:
+        """Reads the data from the given path."""
+        return (
+            (local_path).read_text()
+            if (local_path := self.base / path).exists()
+            else None
+        )
+
+    def list(self, path: Optional[str] = None) -> Iterator[str]:
+        for root, _, files in os.walk(self.base / path if path else self.base):
+            for f in files:
+                if f.endswith(".nd"):
+                    yield f"{root}/{f}"
 
 
 class StoreOperator(Operator):
@@ -125,10 +166,10 @@ class StoreOperator(Operator):
     EXTENSION = ".nd"
 
     def __init__(self, store: Optional[Store] = None):
-        self.store: Store = store if store else Store()
+        self.store: Store = store if store else LocalStore()
 
     def editNote(self, note: str) -> EditSession:
-        return EditSession(self.notePath(note))
+        return EditSession(self.store.openNote(self.notePath(note)))
 
     def hasNote(self, note: str) -> bool:
         return self.store.exists(self.notePath(note))
@@ -154,22 +195,22 @@ class GitOperator(Operator):
 
     # TODO: This should be store-specific
     def editNote(self, path: NotePath) -> EditSession:
-        raise NotImplemented
+        raise NotImplementedError
 
     def hasNote(self, path: NotePath) -> bool:
-        raise NotImplemented
+        raise NotImplementedError
 
     def readNote(self, note: Note) -> str:
-        raise NotImplemented
+        raise NotImplementedError
 
     def listNotes(self, path: Optional[str] = None) -> Iterable[NotePath]:
-        raise NotImplemented
+        raise NotImplementedError
 
     def searchNotesTitle(self, query: str) -> Iterable[NotePath]:
-        raise NotImplemented
+        raise NotImplementedError
 
     def searchNotesContent(self, query: str) -> Iterable[NotePath]:
-        raise NotImplemented
+        raise NotImplementedError
 
 
 # EOF

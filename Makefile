@@ -31,6 +31,10 @@ try-uninstall:
 		done
 	fi
 
+audit:
+	bandit -s B101 -r src/py
+
+
 print-%:
 	@echo "$*="
 	@for FILE in $($*); do echo $$FILE; done
