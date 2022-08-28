@@ -5,13 +5,21 @@ from dataclasses import dataclass
 from typing import Iterable, Optional, cast
 from ..model import ReferenceType, Reference
 
+# TODO: list heading:
+# TODO: - definition:
+# TODO: _term_
+# TODO: <type:Entity Name>
+
 
 def inline(expr: str, multiline=True):
     return parsing.Pattern(re.compile(expr, re.MULTILINE if multiline else 0))
 
 
 def block(expr: str, open=True, multiline=False):
-    return parsing.Pattern(re.compile(expr, re.MULTILINE if multiline else 0), type="open" if open else "closed")
+    return parsing.Pattern(
+        re.compile(expr, re.MULTILINE if multiline else 0),
+        type="open" if open else "closed",
+    )
 
 
 def closedblock(expr: str, multiline=False):
@@ -20,7 +28,7 @@ def closedblock(expr: str, multiline=False):
 
 def node(name: str, content: Optional[list[str]] = None):
     res = Node(name)
-    for t in (content or ()):
+    for t in content or ():
         res.append(text(t))
     return res
 
@@ -105,8 +113,12 @@ REFERENCES = {
 }
 
 STRUCTURE = {
-    "heading:prefixed": closedblock(r"(?P<depth>#+)\s+(?P<content>.+)\n", multiline=True),
-    "heading:suffixed": closedblock(r"(?P<content>.+)\n(?P<underline>(===+|\-\-\-+))\n", multiline=True),
+    "heading:prefixed": closedblock(
+        r"(?P<depth>#+)\s+(?P<content>.+)\n", multiline=True
+    ),
+    "heading:suffixed": closedblock(
+        r"(?P<content>.+)\n(?P<underline>(===+|\-\-\-+))\n", multiline=True
+    ),
     "list-item:numeric": block(r"^(?P<depth>\s*)\d\)\s+"),
     "list-item:alpha": block(r"^(?P<depth>\s*)\[a-z]\)\s+"),
     "list-item:bullet": block(r"^(?P<depth>\s*)\-\s+"),
@@ -114,7 +126,6 @@ STRUCTURE = {
     "code": block(r"^```"),
     "block": block(r"^\-\-"),
 }
-
 
 
 @dataclass
@@ -127,19 +138,23 @@ class Block:
 def references(text: str) -> list[Reference]:
     """Returns the list of references found in the given list of text"""
     res = []
-    for reftype, delimiter in cast(Iterable[tuple[ReferenceType, parsing.Match]], parsing.parse(REFERENCES, text)):
+    for reftype, delimiter in cast(
+        Iterable[tuple[ReferenceType, parsing.Match]], parsing.parse(REFERENCES, text)
+    ):
         res.append(Reference(reftype, delimiter.match.group()))
     return res
 
 
-def structure(text: str, patterns: dict[str, parsing.Pattern] = STRUCTURE) -> list[Block]:
+def structure(
+    text: str, patterns: dict[str, parsing.Pattern] = STRUCTURE
+) -> list[Block]:
     """Parses the given text using the given patterns, and returns the list of
     recognized blocks. The patterns are used as delimiters."""
     offset = 0
     block: Optional[Block] = None
     blocks: list[Block] = []
     for name, delimiter in parsing.parse(patterns, text):
-        before = text[offset:delimiter.fragment.start]
+        before = text[offset : delimiter.fragment.start]
         if not before:
             pass
         elif not block:
@@ -175,7 +190,7 @@ def tree(blocks: list[Block]) -> Node:
     return root
 
 
-def parse(text: str,patterns=STRUCTURE) -> Node:
+def parse(text: str, patterns=STRUCTURE) -> Node:
     return tree(structure(text, patterns))
 
 

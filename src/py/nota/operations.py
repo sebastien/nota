@@ -1,4 +1,14 @@
-from typing import ContextManager, Optional, Generic, TypeVar, Iterable, Iterator, Union
+from typing import (
+    ContextManager,
+    Optional,
+    Generic,
+    TypeVar,
+    Optional,
+    Iterable,
+    Iterator,
+    Callable,
+    Union,
+)
 from pathlib import Path
 from .model import Note, NotePath
 import os
@@ -54,10 +64,9 @@ class Session(ContextManager, Generic[T]):
 
 
 class EditSession(Session):
-    def __init__(self, path: Path, onEnd: Optional[Callback[[Path]], None] = None):
-        assert isinstance(path, Path), f"Expected path, got: {path}"
-        self.path: Path = path
-        self.onEnd: Optional[Callback[[Path], None]] = onEnd
+    def __init__(self, path: NotePath, onEnd: Optional[Callable[[Path], None]] = None):
+        self.path: Path = Path(path)
+        self.onEnd: Optional[Callable[[Path], None]] = onEnd
 
     def __enter__(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
