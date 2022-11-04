@@ -52,94 +52,67 @@ and  you can interleave with comments and description
 """
 
 
-class Session(ContextManager, Generic[T]):
-    def __init__(self, path: NotePath):
+class OperationException(Exception):
+    pass
+
+
+class NoteChangedError(OperationException):
+    def __init__(self, path: str):
+        super(f"Note has has change: {path}")
         self.path = path
-
-    def __enter__(self):
-        pass
-
-    def __exit__(self, type, value, traceback):
-        pass
-
-
-class EditSession(Session):
-    def __init__(self, path: NotePath, onEnd: Optional[Callable[[Path], None]] = None):
-        self.path: Path = Path(path)
-        self.onEnd: Optional[Callable[[Path], None]] = onEnd
-
-    def __enter__(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.path.exists():
-            self.path.write_text(NOTE_TEMPLATE)
-        return self.path
-
-    def __exit__(self, type, value, traceback):
-        pass
 
 
 class Operator:
-    def editNote(self, path: NotePath) -> Session[NotePath]:
-        raise NotImplemented
-
     def hasNote(self, path: NotePath) -> bool:
-        raise NotImplemented
+        raise NotImplementedError
 
-    def readNote(self, note: Note) -> str:
-        raise NotImplemented
+    def readNote(self, path: NotePath) -> Optional[str]:
+        raise NotImplementedError
 
-    def listNotes(self, path: Optional[str] = None) -> Iterable[NotePath]:
-        raise NotImplemented
+    def writeNote(self, path: NotePath, updated: str, original: Optional[str]) -> bool:
+        raise NotImplementedError
+
+    def pathNote(self, path: NotePath) -> Optional[str]:
+        raise NotImplementedError
+
+    def listNotes(self) -> Iterable[NotePath]:
+        raise NotImplementedError
 
     def searchNotesTitle(self, query: str) -> Iterable[NotePath]:
-        raise NotImplemented
+        raise NotImplementedError
 
     def searchNotesContent(self, query: str) -> Iterable[NotePath]:
-        raise NotImplemented
-
-
-class Operations(Operator):
-    def __init__(self, *delegates: Operator):
-        self.delegates = delegates
-
-    def editNote(self, path: NotePath) -> Session[NotePath]:
-        return [_.editNote(path) for _ in self.delegates][0]
-
-    def hasNote(self, path: NotePath) -> bool:
-        return [_.hasNote(path) for _ in self.delegates][0]
-
-    def readNote(self, note: Note) -> str:
-        return [_.readNote(note) for _ in self.delegates][0]
-
-    def listNotes(self, path: Optional[str] = None) -> Iterable[NotePath]:
-        return [_.listNotes(path) for _ in self.delegates][0]
-
-    def searchNotesTitle(self, query: str) -> Iterable[NotePath]:
-        return [_.searchNotesTitle(query) for _ in self.delegates][0]
-
-    def searchNotesContent(self, query: str) -> Iterable[NotePath]:
-        return [_.searchNotesContent(query) for _ in self.delegates][0]
+        raise NotImplementedError
 
 
 class Store:
-    def edit(self, note: str):
-        return EditSession(self.store.openNote(self.notePath(note)))
-
     def exists(self, path: str) -> bool:
         """Tells if the given path exists"""
         raise NotImplementedError
 
-    def read(self, path: str) -> str:
+    def read(self, path: str) -> Optional[str]:
         """Reads the data from the given path."""
         raise NotImplementedError
 
-    def list(self, path: Optional[str] = None) -> Iterator[str]:
-        """Reads the notes at the given path."""
+    def write(self, path: str, updated: str, original: Optional[str]) -> bool:
+        """Writes the data to the given path."""
+        raise NotImplementedError
+
+    def list(self) -> Iterator[str]:
+        """Lists all the notes in the store"""
+        raise NotImplementedError
+
+    def pathNote(self, note: NotePath) -> str:
+        raise NotImplementedError
+
+    def notePath(self, path: str) -> NotePath:
         raise NotImplementedError
 
 
 class LocalStore(Store):
     """Implements a local store"""
+
+    EXTENSION = ".nd"
 
     def __init__(
         self,
@@ -163,34 +136,59 @@ class LocalStore(Store):
             else None
         )
 
-    def list(self, path: Optional[str] = None) -> Iterator[str]:
-        for root, _, files in os.walk(self.base / path if path else self.base):
+    def write(
+        self, path: NotePath, contents: str, original: Optional[str] = None
+    ) -> bool:
+        """Writes the contents to the note."""
+        actual_path = self.pathNote(path)
+        if original:
+            with open(actual_path, "rt") as f:
+                if f.read() != original:
+                    raise NoteChangedError(path)
+
+        with open(self.base / path, "wt") as f:
+            f.write(contents)
+        return True
+
+    def list(self) -> Iterator[str]:
+        # FIXME: This does not make sense, what if path is partial?
+        for root, _, files in os.walk(self.base):
             for f in files:
-                if f.endswith(".nd"):
-                    yield f"{root}/{f}"
+                if f.endswith(self.EXTENSION):
+                    # FIXME: Is we should make sure this is really relative to the
+                    yield self.notePath(f"{root}/{f}")
+
+    def pathNote(self, note: NotePath) -> str:
+        return str(self.base / f"{note}.{self.EXTENSION}")
+
+    def notePath(self, path: str) -> NotePath:
+        res = str(path)
+        base = f"{self.base}/"
+        if not path.startswith(base):
+            raise RuntimeError("Path should start with '{base}', got: {path}")
+        if not path.endswith(self.EXTENSION):
+            raise RuntimeError("Path should end with '{self.EXTENSION}', got: {path}")
+        return res[len(base) : -len(self.EXTENSION)]
 
 
-class StoreOperator(Operator):
-
-    EXTENSION = ".nd"
-
+class LocalOperator(Operator):
     def __init__(self, store: Optional[Store] = None):
         self.store: Store = store if store else LocalStore()
 
-    def editNote(self, note: str) -> EditSession:
-        return EditSession(self.store.openNote(self.notePath(note)))
+    def hasNote(self, path: NotePath) -> bool:
+        return self.store.exists(path)
 
-    def hasNote(self, note: str) -> bool:
-        return self.store.exists(self.notePath(note))
+    def readNote(self, path: NotePath) -> Optional[str]:
+        return self.store.read(path)
 
-    def readNote(self, note: str) -> str:
-        return self.store.read(self.notePath(note))
+    def writeNote(self, path: NotePath, updated: str, original: Optional[str]) -> bool:
+        return self.store.write(path, updated, original)
 
-    def listNotes(self, path: Optional[str] = None) -> Iterable[str]:
-        return self.store.list(self.notePath(path) if path else None)
+    def listNotes(self) -> Iterable[NotePath]:
+        return self.store.list()
 
-    def notePath(self, note: str) -> str:
-        return f"{note}{self.EXTENSION}"
+    def pathNote(self, path: NotePath) -> Optional[str]:
+        return self.store.pathNote(path)
 
 
 # --
@@ -202,17 +200,13 @@ class GitOperator(Operator):
     def __init__(self):
         pass
 
-    # TODO: This should be store-specific
-    def editNote(self, path: NotePath) -> EditSession:
-        raise NotImplementedError
-
     def hasNote(self, path: NotePath) -> bool:
         raise NotImplementedError
 
-    def readNote(self, note: Note) -> str:
+    def readNote(self, path: NotePath) -> str:
         raise NotImplementedError
 
-    def listNotes(self, path: Optional[str] = None) -> Iterable[NotePath]:
+    def listNotes(self) -> Iterable[NotePath]:
         raise NotImplementedError
 
     def searchNotesTitle(self, query: str) -> Iterable[NotePath]:
@@ -220,6 +214,32 @@ class GitOperator(Operator):
 
     def searchNotesContent(self, query: str) -> Iterable[NotePath]:
         raise NotImplementedError
+
+
+class CompositeOperator(Operator):
+    def __init__(self, *delegates: Operator):
+        self.delegates = delegates
+
+    def hasNote(self, path: NotePath) -> bool:
+        return [_.hasNote(path) for _ in self.delegates][0]
+
+    def readNote(self, path: NotePath) -> Optional[str]:
+        return [_.readNote(path) for _ in self.delegates][0]
+
+    def writeNote(self, path: NotePath, updated: str, original: Optional[str]) -> bool:
+        return [_.writeNote(path) for _ in self.delegates][0]
+
+    def listNotes(self) -> Iterable[NotePath]:
+        return [_.listNotes() for _ in self.delegates][0]
+
+    def pathNote(self, path: NotePath) -> Optional[str]:
+        return [_.pathNote(path) for _ in self.delegates][0]
+
+    def searchNotesTitle(self, query: str) -> Iterable[NotePath]:
+        return [_.searchNotesTitle(query) for _ in self.delegates][0]
+
+    def searchNotesContent(self, query: str) -> Iterable[NotePath]:
+        return [_.searchNotesContent(query) for _ in self.delegates][0]
 
 
 # EOF

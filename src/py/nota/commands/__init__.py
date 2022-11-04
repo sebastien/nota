@@ -2,13 +2,15 @@ import sys
 import os
 import re
 import subprocess
+import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Optional, Iterable
+from typing import Optional, Iterable, Union
 from ..model import NotePath, Reference
 from ..format import nd
 from difflib import get_close_matches
 from ..utils import cli
-from ..operations import Operations, StoreOperator
+from ..operations import CompositeOperator, LocalOperator, NOTE_TEMPLATE
 from ..utils import indexing
 
 ENCODING = sys.stdout.encoding
@@ -19,6 +21,20 @@ RE_NUMBER = re.compile(r"\d+")
 #
 # This is the main part of the module where we implement each command, along
 # with its documentation and command line arguments.
+
+
+@contextmanager
+def mktemp(*, prefix=Optional[str], contents: Optional[str] = None) -> str:
+    fd, path = tempfile.mkstemp(suffix=".nd", prefix=prefix or "nota-", text=True)
+    if contents:
+        os.write(fd, bytes(contents, "utf8"))
+    os.close(fd)
+    try:
+        yield path
+    except Exception as e:
+        raise e
+    finally:
+        os.unlink(path)
 
 
 def key(text: str) -> str:
@@ -71,13 +87,22 @@ class Match:
 
 class Context:
     def __init__(self):
-        self.do = Operations(StoreOperator())
+        self.do = CompositeOperator(LocalOperator())
         self.editor = os.environ["EDITOR"] if "EDITOR" in os.environ else "vi"
 
-    def edit(self, path: str):
-        with self.do.editNote(path) as p:
-            # nosec - this is fine, as we're calling the user editor and it's
-            subprocess.run([self.editor, str(p)], shell=False)
+    def edit(self, path: str) -> bool:
+        contents = self.do.readNote(path) or NOTE_TEMPLATE
+        # nosec - this is fine, as we're calling the user editor and it's
+        with mktemp(
+            prefix=f"nota-{os.path.basename(path).split('.')[0]}-", contents=contents
+        ) as path:
+            subprocess.run([self.editor, path], shell=False)
+            with open(path, "rt") as f:
+                updated = f.read()
+            if updated == contents:
+                return False
+            else:
+                return self.do.writeNote(path, updated, contents)
 
     def err(self, message: str):
         sys.stdout.write("[!] ")
@@ -140,12 +165,29 @@ class Context:
     #     def getNoteMetadata( self, name:str ): NoteMetadata
     #         pass
 
-    def displayEnumeratedList(self, items: Iterable[str]):
-        if not items:
-            self.err(f"No item found")
+    def highlight(
+        self,
+        text: str,
+        match: Optional[Union[list[str], str]] = None,
+        color: str = Color.YELLOW,
+    ) -> str:
+        if match:
+            for m in (match,) if isinstance(match, str) else match:
+                text = text.replace(m, f"{color}{m}{color}")
+            return text
         else:
-            for i, item in enumerate(items):
-                self.out(f"[{i+1:2d}] {item}")
+            return f"{color}{text}{color}"
+
+    def enumerateNotes(self, notes: Iterable[str], match: Optional[str] = None):
+        if not notes:
+            self.err(f"No note found")
+        else:
+            all_notes = [_ for _ in notes]
+            width = max(len(_) for _ in all_notes)
+            for i, note in enumerate(all_notes):
+                self.out(
+                    f"[{i+1:2d}] {self.highlight(note.ljust(width), match, Color.GREEN)} {Color.DARK_GRAY}{self.do.pathNote(note) or ''}{Color.RESET}"
+                )
 
 
 RE_INT = re.compile("^\d+$")
@@ -172,14 +214,17 @@ def edit(context, name: list[str]):
     match = context.findNodes(name)
     query = " ".join(name)
     if not name:
-        context.displayEnumeratedList(context.do.listNotes())
+        context.enumerateNotes(context.do.listNotes())
     elif match.exact:
         context.edit(match.exact)
     elif len(match.subset) == 1:
         context.info(
             f"Picked close match {Color.BLUE}{match.subset[0]}{Color.RESET} for {Color.WHITE_BOLD}{query}{Color.RESET}"
         )
-        context.edit(match.subset[0])
+        if context.edit(note := match.subset[0]):
+            context.info(f" ✍️  {Color.BLUE}Updated note{Color.RESET} {note}")
+        else:
+            context.info(f"{Color.DARK_GRAY}No change recorded.{Color.RESET}")
     elif len(match.like) == 1:
         context.info(
             f"Picked close match {Color.BLUE}{match.like[0]}{Color.RESET} for {Color.WHITE_BOLD}{query}{Color.RESET}"
@@ -187,17 +232,17 @@ def edit(context, name: list[str]):
         context.edit(match.like[0])
     elif not match.all:
         context.info(
-            f"━━━━ Could not find any match for {Color.RED_BOLD}{query}{Color.RESET}."
+            f"━━━━ Could not find any match for {Color.GREEN_BOLD}{query}{Color.RESET}."
         )
-        context.displayEnumeratedList(context.do.listNotes())
+        context.enumerateNotes(context.do.listNotes(), name)
     elif len(match.all) == 1:
         context.info(f"Editing close match '{match.head}' for '{query}'")
         context.edit(match.head)
     else:
         context.out(
-            f"━━━━ Could not find an exact match for {Color.RED_BOLD}{query}{Color.RESET}, here are close matches:"
+            f"━━━━ Could not find an exact match for {Color.GREEN_BOLD}{query}{Color.RESET}, here are close matches:"
         )
-        context.displayEnumeratedList(match.all)
+        context.enumerateNotes(match.all, name)
         context.tip(f"Add the item number to the command to edit that note")
 
 
@@ -205,7 +250,7 @@ def edit(context, name: list[str]):
 def _list(context, query: Optional[str] = None):
     """Lists the available notes"""
     # TODO: Display note udpated
-    context.displayEnumeratedList(context.findNodes(query).all)
+    context.enumerateNotes(context.findNodes(query).all, query)
 
 
 @cli.command("QUERY", alias="q|s|search")

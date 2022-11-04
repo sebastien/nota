@@ -6,7 +6,7 @@ SOURCES_PY:=$(wildcard src/py/*.py src/py/*/*.py src/py/*/*/*.py src/py/*/*/*/*.
 PATH_LOCAL_PY=$(firstword $(shell python -c "import sys,pathlib;sys.stdout.write(' '.join([_ for _ in sys.path if _.startswith(str(pathlib.Path.home()))] ))"))
 PATH_LOCAL_BIN=~/.local/bin
 
-try-install:
+install:
 	@for file in $(SOURCES_BIN); do
 		ln -sfr $$file $(PATH_LOCAL_BIN)/$$(basename $$file)
 		echo "Installed $(PATH_LOCAL_BIN)/$$(basename $$file)"
@@ -19,7 +19,7 @@ try-install:
 	fi
 
 
-try-uninstall:
+uninstall:
 	@for file in $(SOURCES_BIN); do
 		unlink $(PATH_LOCAL_BIN)/$$(basename $$file)
 		echo "Uninstalled $(PATH_LOCAL_BIN)/$$(basename $$file)"
