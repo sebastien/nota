@@ -90,19 +90,25 @@ class Context:
         self.do = CompositeOperator(LocalOperator())
         self.editor = os.environ["EDITOR"] if "EDITOR" in os.environ else "vi"
 
-    def edit(self, path: str) -> bool:
+    def edit(self, path: NotePath) -> bool:
         contents = self.do.readNote(path) or NOTE_TEMPLATE
         # nosec - this is fine, as we're calling the user editor and it's
         with mktemp(
             prefix=f"nota-{os.path.basename(path).split('.')[0]}-", contents=contents
-        ) as path:
-            subprocess.run([self.editor, path], shell=False)
-            with open(path, "rt") as f:
+        ) as temp:
+            subprocess.run([self.editor, temp], shell=False)
+            with open(temp, "rt") as f:
                 updated = f.read()
             if updated == contents:
+                self.out(f" {Color.DARK_GRAY}No change to {path}{Color.RESET}")
                 return False
             else:
-                return self.do.writeNote(path, updated, contents)
+                if self.do.writeNote(path, updated, contents):
+                    self.out(f"Updated {Color.GREEN}{path}{Color.RESET}")
+                    return True
+                else:
+                    self.error(f"Could not update {Color.RED}{path}{Color.RESET}")
+                    return False
 
     def err(self, message: str):
         sys.stdout.write("[!] ")
@@ -140,7 +146,7 @@ class Context:
         )
 
     def findNodes(self, query: list[str]) -> Match:
-        notelist = list(self.do.listNotes())
+        notelist = sorted(list(self.do.listNotes()))
         match = None
         for q in query:
             if isinstance(q, int) or RE_NUMBER.match(q):
@@ -172,11 +178,16 @@ class Context:
         color: str = Color.YELLOW,
     ) -> str:
         if match:
-            for m in (match,) if isinstance(match, str) else match:
-                text = text.replace(m, f"{color}{m}{color}")
+            # NOTE: This is not the right way to do it, but it works
+            # for basic cases
+            for m in (
+                (match,) if isinstance(match, str) else sorted(match, reverse=True)
+            ):
+                if m in text:
+                    return text.replace(m, f"{color}{m}{Color.RESET}")
             return text
         else:
-            return f"{color}{text}{color}"
+            return f"{color}{text}{Color.RESET}"
 
     def enumerateNotes(self, notes: Iterable[str], match: Optional[str] = None):
         if not notes:
@@ -216,6 +227,7 @@ def edit(context, name: list[str]):
     if not name:
         context.enumerateNotes(context.do.listNotes())
     elif match.exact:
+        context.info(f"Picked matching note {Color.BLUE}{match.exact}{Color.RESET}")
         context.edit(match.exact)
     elif len(match.subset) == 1:
         context.info(

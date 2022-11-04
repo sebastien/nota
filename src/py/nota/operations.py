@@ -86,19 +86,19 @@ class Operator:
 
 
 class Store:
-    def exists(self, path: str) -> bool:
+    def exists(self, path: NotePath) -> bool:
         """Tells if the given path exists"""
         raise NotImplementedError
 
-    def read(self, path: str) -> Optional[str]:
+    def read(self, path: NotePath) -> Optional[str]:
         """Reads the data from the given path."""
         raise NotImplementedError
 
-    def write(self, path: str, updated: str, original: Optional[str]) -> bool:
+    def write(self, path: NotePath, updated: str, original: Optional[str]) -> bool:
         """Writes the data to the given path."""
         raise NotImplementedError
 
-    def list(self) -> Iterator[str]:
+    def list(self) -> Iterator[NotePath]:
         """Lists all the notes in the store"""
         raise NotImplementedError
 
@@ -124,17 +124,18 @@ class LocalStore(Store):
         if not self.base.exists():
             raise RuntimeError(f"Store path does not exsits: {base}")
 
-    def exists(self, path: str) -> bool:
+    def exists(self, path: NotePath) -> bool:
         """Tells if the given path exists"""
         return (self.base / path).exists()
 
-    def read(self, path: str) -> Optional[str]:
+    def read(self, path: NotePath) -> Optional[str]:
         """Reads the data from the given path."""
-        return (
-            (local_path).read_text()
-            if (local_path := self.base / path).exists()
-            else None
-        )
+        actual = self.pathNote(path)
+        if os.path.exists(actual):
+            with open(actual, "rt") as f:
+                return f.read()
+        else:
+            return None
 
     def write(
         self, path: NotePath, contents: str, original: Optional[str] = None
@@ -146,7 +147,7 @@ class LocalStore(Store):
                 if f.read() != original:
                     raise NoteChangedError(path)
 
-        with open(self.base / path, "wt") as f:
+        with open(actual_path, "wt") as f:
             f.write(contents)
         return True
 
@@ -159,7 +160,7 @@ class LocalStore(Store):
                     yield self.notePath(f"{root}/{f}")
 
     def pathNote(self, note: NotePath) -> str:
-        return str(self.base / f"{note}.{self.EXTENSION}")
+        return str(self.base / f"{note}{self.EXTENSION}")
 
     def notePath(self, path: str) -> NotePath:
         res = str(path)
@@ -227,7 +228,7 @@ class CompositeOperator(Operator):
         return [_.readNote(path) for _ in self.delegates][0]
 
     def writeNote(self, path: NotePath, updated: str, original: Optional[str]) -> bool:
-        return [_.writeNote(path) for _ in self.delegates][0]
+        return [_.writeNote(path, updated, original) for _ in self.delegates][0]
 
     def listNotes(self) -> Iterable[NotePath]:
         return [_.listNotes() for _ in self.delegates][0]
