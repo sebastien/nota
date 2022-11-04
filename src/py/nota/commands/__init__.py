@@ -107,7 +107,7 @@ class Context:
                     self.out(f"Updated {Color.GREEN}{path}{Color.RESET}")
                     return True
                 else:
-                    self.error(f"Could not update {Color.RED}{path}{Color.RESET}")
+                    self.err(f"Could not update {Color.RED}{path}{Color.RESET}")
                     return False
 
     def err(self, message: str):
