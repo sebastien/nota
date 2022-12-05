@@ -147,6 +147,8 @@ class LocalStore(Store):
                 if f.read() != original:
                     raise NoteChangedError(path)
 
+        if not actual_path.parent.exists():
+            actual_path.parent.mkdir(parents=True)
         with open(actual_path, "wt") as f:
             f.write(contents)
         return True
@@ -166,7 +168,7 @@ class LocalStore(Store):
         res = str(path)
         base = f"{self.base}/"
         if not path.startswith(base):
-            raise RuntimeError("Path should start with '{base}', got: {path}")
+            raise RuntimeError(f"Path should start with '{base}', got: {path}")
         if not path.endswith(self.EXTENSION):
             raise RuntimeError("Path should end with '{self.EXTENSION}', got: {path}")
         return res[len(base) : -len(self.EXTENSION)]
