@@ -142,7 +142,7 @@ class LocalStore(Store):
     ) -> bool:
         """Writes the contents to the note."""
         actual_path = self.pathNote(path)
-        if original:
+        if original and os.path.exists(actual_path):
             with open(actual_path, "rt") as f:
                 if f.read() != original:
                     raise NoteChangedError(path)
