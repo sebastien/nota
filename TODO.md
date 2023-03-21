@@ -1,1 +1,2 @@
+- `nota edit` should not edit a tempfile, as this runs the risk of losing information, especially when there are concurrent modifications, which may happen even in a local session.
 - `nota search "git clone branch"` should look for all these keywords in a sentence or paragraph.
