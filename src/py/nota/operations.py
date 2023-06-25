@@ -1,16 +1,13 @@
 from typing import (
-    ContextManager,
     Optional,
-    Generic,
     TypeVar,
     Optional,
     Iterable,
     Iterator,
-    Callable,
     Union,
 )
 from pathlib import Path
-from .model import Note, NotePath
+from .model import NotePath
 import os
 
 T = TypeVar("T")
@@ -58,7 +55,7 @@ class OperationException(Exception):
 
 class NoteChangedError(OperationException):
     def __init__(self, path: str):
-        super(f"Note has has change: {path}")
+        super().__init__(f"Note has has change: {path}")
         self.path = path
 
 
@@ -141,12 +138,14 @@ class LocalStore(Store):
         self, path: NotePath, contents: str, original: Optional[str] = None
     ) -> bool:
         """Writes the contents to the note."""
-        actual_path = self.pathNote(path)
-        if original:
+        actual_path = Path(self.pathNote(path))
+        if original and actual_path.exists():
             with open(actual_path, "rt") as f:
                 if f.read() != original:
                     raise NoteChangedError(path)
 
+        if not actual_path.parent.exists():
+            actual_path.parent.mkdir(parents=True)
         with open(actual_path, "wt") as f:
             f.write(contents)
         return True
@@ -166,7 +165,7 @@ class LocalStore(Store):
         res = str(path)
         base = f"{self.base}/"
         if not path.startswith(base):
-            raise RuntimeError("Path should start with '{base}', got: {path}")
+            raise RuntimeError(f"Path should start with '{base}', got: {path}")
         if not path.endswith(self.EXTENSION):
             raise RuntimeError("Path should end with '{self.EXTENSION}', got: {path}")
         return res[len(base) : -len(self.EXTENSION)]
