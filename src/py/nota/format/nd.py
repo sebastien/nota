@@ -194,9 +194,10 @@ def parse(text: str, patterns=STRUCTURE) -> Node:
     return tree(structure(text, patterns))
 
 
-# with open("/home/sebastien/.nota/tools/git.nd", "rt") as f:
-# value = f.read()
-# print(toSExpr(tree(structure(value))))
-# print(references(value))
+if __name__ == "__main__":
+    with open("/home/sebastien/.nota/tools/git.nd", "rt") as f:
+        value = f.read()
+        print(toSExpr(tree(structure(value))))
+        print(references(value))
 
 # EOF
