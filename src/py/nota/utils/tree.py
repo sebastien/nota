@@ -2,11 +2,9 @@ from typing import Optional, Optional, Any, Union, Iterable, TypeVar, Generic
 import html
 import json
 
-T = TypeVar("T")
-
 
 # NOTE: This is copied from parsource, originally from tlang.
-class Node(Generic[T]):
+class Node:
     """A node is an uniquely identified, named object with zero or one parent,
     a set of attributes and a list of children."""
 
@@ -17,19 +15,15 @@ class Node(Generic[T]):
         name: str,
         attributes: Optional[dict[str, Union[str, int, float, tuple]]] = None,
         children: Optional[list["Node[T]"]] = None,
-        *,
-        data: Optional[T] = None,
     ):
         assert isinstance(name, str), f"Node name must be a string, got: {name}"
         self.name = name
-        self.data: Optional[T] = data
         self.id = Node.IDS
         Node.IDS += 1
         self.parent: Optional[Node[T]] = None
         # FIXME: This does not support namespaces for attributes
         self.attributes: dict[str, Any] = attributes if attributes else {}
         self._children: list[Node[T]] = [] if children is None else children
-        self.metadata: Optional[dict[str, Any]] = None
 
     @property
     def head(self) -> Optional["Node[T]"]:
@@ -303,8 +297,6 @@ class Node(Generic[T]):
             res["parent"] = self.parent.id
         if self.attributes:
             res["attributes"] = self.attributes
-        if self.metadata:
-            res["metadata"] = self.metadata
         if self._children:
             res["children"] = [_.asDict() for _ in self._children]
         return res
@@ -359,6 +351,19 @@ class Node(Generic[T]):
     def toTDoc(self) -> str:
         return "\n".join(self.iterTDoc())
 
+    def toPrimitive(self):
+        return {
+            k: v
+            for k, v in dict(
+                name=self.name,
+                attributes=self.attributes,
+                children=[_.toPrimitive() for _ in self.children]
+                if self.children
+                else None,
+            ).items()
+            if v is not None
+        }
+
     def __getitem__(self, index: Union[int, str]):
         if isinstance(index, str):
             if index not in self.attributes:
@@ -401,10 +406,12 @@ def toSExprLines(node: Node, prefix="", suffix="") -> Iterable[str]:
     # FIXME: It's ~OK but needs improvement
     last_child = len(node.children) - 1
     suffix += ")" if last_child < 0 else ""
-    if node.name == "#text":
-        yield f"{prefix}({node.name or ':root'} {json.dumps(node.data)}{suffix}"
-    else:
-        yield f"{prefix}({node.name or ':root'}{suffix}"
+    attrs = (
+        f" [{' '.join(f':{k} {json.dumps(v)}' for k,v in node.attributes.items())}]"
+        if node.attributes
+        else ""
+    )
+    yield f"{prefix}({node.name or ':root'}{attrs}{suffix}"
     if last_child >= 0:
         child_prefix = " " * len(prefix)
         for i, child in enumerate(node.children):
